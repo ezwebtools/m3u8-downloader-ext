@@ -10,7 +10,7 @@ export default defineConfig({
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
     default_locale: 'en',
-    permissions: ['storage', 'tabs', 'webRequest'],
+    permissions: ['storage', 'tabs', 'webRequest', 'downloads'],
     host_permissions: ['<all_urls>'],
     web_accessible_resources: [
       {

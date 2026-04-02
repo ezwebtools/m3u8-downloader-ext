@@ -1,8 +1,7 @@
 <script lang="ts" setup>
-
   interface M3U8Item {
-    url: string;
-    type?: string;
+    url: string
+    type?: string
   }
 
   function urlToItem(url: string): M3U8Item {
@@ -15,13 +14,14 @@
     }
   }
 
-  const expandedId = ref<number | null>(null);
-  const showMore = ref(false);
-  const showToast = ref(false);
-  const toastMessage = ref('');
-  const version = '1.0.0';
-  const m3u8List = ref<M3U8Item[]>([]);
+  const expandedId = ref<number | null>(null)
+  const showMore = ref(false)
+  const showToast = ref(false)
+  const toastMessage = ref('')
+  const m3u8List = ref<M3U8Item[]>([])
   let currentTabId: number | undefined
+
+  const version = browser.runtime.getManifest().version
 
   function onMessage(msg: { type: string; tabId?: number; list?: string[] }) {
     if (msg.type === 'LIST_UPDATED' && msg.tabId === currentTabId && msg.list) {
@@ -36,90 +36,94 @@
     const list = (await browser.runtime.sendMessage({ type: 'GET_LIST', tabId: currentTabId })) as string[] | undefined
     m3u8List.value = (list ?? []).map(urlToItem)
     browser.runtime.onMessage.addListener(onMessage)
-  });
+  })
 
   onUnmounted(() => {
     browser.runtime.onMessage.removeListener(onMessage)
-  });
-
-
+  })
 
   const getFileName = (url: string): string => {
-    const parts = url.split('/');
-    return parts[parts.length - 1] || url;
-  };
-
+    try {
+      const pathname = new URL(url).pathname
+      const name = pathname.split('/').pop()
+      return name || url
+    } catch {
+      return url.split('/').pop() || url
+    }
+  }
 
   const getTypeLabel = (type: string | undefined): string => {
-    if (!type) return browser.i18n.getMessage('unknown');
+    if (!type) return browser.i18n.getMessage('unknown')
     const typeMap: Record<string, string> = {
-      'm3u8': 'HLS',
-      'mp4': 'MP4',
-      'mp3': 'MP3',
-      'flv': 'FLV',
-      'mkv': 'MKV',
-      'webm': 'WebM',
-    };
-    return typeMap[type.toLowerCase()] || type.toUpperCase();
-  };
+      m3u8: 'HLS',
+      mp4: 'MP4',
+      mp3: 'MP3',
+      flv: 'FLV',
+      mkv: 'MKV',
+      webm: 'WebM',
+    }
+    return typeMap[type.toLowerCase()] || type.toUpperCase()
+  }
 
   const getTypeColor = (type: string | undefined): string => {
-    if (!type) return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+    if (!type) return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
     const colorMap: Record<string, string> = {
-      'm3u8': 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
-      'mp4': 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-      'mp3': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-      'flv': 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
-      'mkv': 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-      'webm': 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300',
-    };
-    return colorMap[type.toLowerCase()] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
-  };
+      m3u8: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+      mp4: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+      mp3: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+      flv: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
+      mkv: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+      webm: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300',
+    }
+    return colorMap[type.toLowerCase()] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+  }
 
   const toggleExpand = (id: number) => {
-    expandedId.value = expandedId.value === id ? null : id;
-  };
+    expandedId.value = expandedId.value === id ? null : id
+  }
 
-
+  const showToastMsg = (msg: string) => {
+    toastMessage.value = msg
+    showToast.value = true
+    setTimeout(() => { showToast.value = false }, 2000)
+  }
 
   const playUrl = (url: string) => {
-    window.open(url, '_blank');
-  };
+    browser.tabs.create({ url })
+  }
 
   const copyUrl = (url: string) => {
-    navigator.clipboard.writeText(url);
-    toastMessage.value = browser.i18n.getMessage('copyTips');
-    showToast.value = true;
-    setTimeout(() => {
-      showToast.value = false;
-    }, 2000);
-  };
+    navigator.clipboard.writeText(url).then(() => {
+      showToastMsg(browser.i18n.getMessage('copyTips'))
+    })
+  }
+
+  const downloadUrl = (url: string) => {
+    const filename = getFileName(url)
+    browser.downloads.download({ url, filename })
+  }
 
   const clearList = () => {
     if (currentTabId !== undefined) {
       browser.runtime.sendMessage({ type: 'CLEAR_LIST', tabId: currentTabId })
     }
-    m3u8List.value = [];
-    expandedId.value = null;
-  };
+    m3u8List.value = []
+    expandedId.value = null
+  }
 
   const openSettings = () => {
-    console.log('open settings');
-  };
+    browser.runtime.openOptionsPage?.()
+  }
 
   const openFeedback = () => {
-    showMore.value = false;
-    console.log('open feedback');
-  };
+    showMore.value = false
+    browser.tabs.create({ url: 'https://github.com' })
+  }
 
   const openHelp = () => {
-    showMore.value = false;
-    console.log('open help');
-  };
-
-
-
-
+    showMore.value = false
+    browser.tabs.create({ url: 'https://github.com' })
+  }
 </script>
 
 <template>
@@ -132,30 +136,22 @@
         </svg>
         <p class="text-sm font-bold">{{ browser.i18n.getMessage('title') }}</p>
       </div>
-      <button class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        :title="browser.i18n.getMessage('home')">
-        <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-        </svg>
-      </button>
     </header>
 
     <div class="p-3 bg-gray-100 dark:bg-gray-800 flex items-center justify-between text-sm">
       <div class="flex items-center gap-3">
-        <span class="text-gray-600 dark:text-gray-400">{{ browser.i18n.getMessage('found') }} <span
-            class="text-blue-500 dark:text-blue-400 font-medium">{{ m3u8List.length }}</span> {{
-              browser.i18n.getMessage('item') }} </span>
+        <span class="text-gray-600 dark:text-gray-400">{{ browser.i18n.getMessage('found') }}<span
+            class="text-blue-500 dark:text-blue-400 font-medium">{{ m3u8List.length }}</span>{{ browser.i18n.getMessage('item') }}</span>
       </div>
       <button @click="clearList"
-        class="px-3 py-1 rounded-full bg-red-500 dark:bg-red-900/30 text-white text-xs font-medium hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
+        class="px-3 py-1 rounded-full bg-red-500 dark:bg-red-900/30 text-white text-xs font-medium hover:bg-red-600 dark:hover:bg-red-900/50 transition-colors">
         {{ browser.i18n.getMessage('clearList') }}
       </button>
     </div>
 
     <main class="flex-1 overflow-y-auto">
       <div v-if="m3u8List.length === 0"
-        class="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 px-6">
+        class="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 px-6 py-12">
         <div class="w-20 h-20 mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
           <svg class="w-10 h-10 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
@@ -168,7 +164,7 @@
 
       <ul v-else class="divide-y divide-gray-200 dark:divide-gray-800">
         <li v-for="(item, index) in m3u8List" :key="index"
-          class="hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+          class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
           <div @click="toggleExpand(index)" class="p-3 flex items-center justify-between gap-2 cursor-pointer">
             <div class="flex-1 min-w-0 flex items-center gap-2">
               <svg class="w-4 h-4 text-gray-400 transition-transform flex-shrink-0"
@@ -178,10 +174,9 @@
               <p class="font-medium text-sm truncate">{{ getFileName(item.url) }}</p>
             </div>
             <div class="flex items-center gap-2" @click.stop>
-              <span :class="getTypeColor(item.type)" class="px-1.5 py-0.5 rounded text-xs font-medium">
+              <span :class="getTypeColor(item.type)" class="px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0">
                 {{ getTypeLabel(item.type) }}
               </span>
-
               <div class="flex gap-1">
                 <button @click="copyUrl(item.url)"
                   class="p-1.5 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
@@ -201,8 +196,8 @@
                       d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </button>
-
-                <button class="p-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                <button @click="downloadUrl(item.url)"
+                  class="p-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
                   :title="browser.i18n.getMessage('download')">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

@@ -1,7 +1,9 @@
+import { isM3U8 } from '../utils/detect'
+import { loadAllTabData, saveTabList, deleteTabList } from '../utils/storage'
+
 export default defineBackground(() => {
   const tabMap = new Map<number, Set<string>>()
 
-  // SW 重启后从 session storage 恢复数据
   loadAllTabData().then(data => {
     data.forEach((set, tabId) => tabMap.set(tabId, set))
     browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {

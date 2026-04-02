@@ -1,44 +1,42 @@
 export default defineUnlistedScript(() => {
-  console.log("Hello from injected.ts");
+  const originalFetch = window.fetch
 
-  /* fetch hook */
-
-const originalFetch = window.fetch
-
-window.fetch = async (...args)=>{
-
-  const url = args[0]
-
-  if(typeof url==="string" && url.includes("m3u8")){
-    send(url)
+  window.fetch = async (...args) => {
+    try {
+      const url = normalizeArg(args[0])
+      if (url && url.toLowerCase().includes('m3u8')) {
+        send(url)
+      }
+    } catch {}
+    return originalFetch(...args)
   }
 
-  return originalFetch(...args)
-}
+  const originalOpen = XMLHttpRequest.prototype.open
 
-/* xhr hook */
-
-const open = XMLHttpRequest.prototype.open
-
-XMLHttpRequest.prototype.open = function(...args){
-
-  const url = args[1]
-
-  if(typeof url==="string" && url.includes("m3u8")){
-    send(url)
+  XMLHttpRequest.prototype.open = function (
+    method: string,
+    url: string | URL,
+    async: boolean = true,
+    username?: string | null,
+    password?: string | null,
+  ) {
+    try {
+      const urlStr = url instanceof URL ? url.toString() : url
+      if (urlStr.toLowerCase().includes('m3u8')) {
+        send(urlStr)
+      }
+    } catch {}
+    return originalOpen.call(this, method, url, async, username, password)
   }
 
-  return open.apply(this,args)
-}
-  
-});
+  function normalizeArg(input: unknown): string | null {
+    if (typeof input === 'string') return input
+    if (input instanceof URL) return input.toString()
+    if (input instanceof Request) return input.url
+    return null
+  }
 
-
-function send(url:String){
- window.postMessage({
-    type:"M3U8_DETECTED",
-    url
-  })
-
-
-}
+  function send(url: string) {
+    window.postMessage({ type: 'M3U8_DETECTED', url })
+  }
+})
