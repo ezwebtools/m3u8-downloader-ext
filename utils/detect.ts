@@ -19,9 +19,3 @@ export function isM3U8(value: unknown): boolean {
     return lower.includes('.m3u8') || lower.includes('m3u8?')
   }
 }
-
-export function extractM3U8UrlsFromText(text: string): string[] {
-  if (!text) return []
-  const matches = text.match(/https?:\/\/[^"'\s<>]+/gi) ?? []
-  return matches.filter(isM3U8)
-}

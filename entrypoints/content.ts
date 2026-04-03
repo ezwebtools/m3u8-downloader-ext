@@ -1,5 +1,3 @@
-import { extractM3U8UrlsFromText } from '../utils/detect'
-
 export default defineContentScript({
   matches: ['*://*/*'],
   allFrames: true,
@@ -12,17 +10,21 @@ export default defineContentScript({
       ;(document.head || document.documentElement).appendChild(script)
     }
 
-    const urls = extractM3U8UrlsFromText(document.documentElement.innerHTML)
-    urls.forEach(url => {
-      browser.runtime.sendMessage({ type: 'M3U8_FOUND', url })
-    })
+    let currentTabId: number | undefined
 
-    window.addEventListener('message', (event) => {
+    window.addEventListener('message', async (event) => {
       if (
         event.data?.type === 'M3U8_DETECTED' &&
         typeof event.data.url === 'string'
       ) {
-        browser.runtime.sendMessage({ type: 'M3U8_FOUND', url: event.data.url })
+        if (!currentTabId) {
+          const tab = await browser.runtime.sendMessage({ type: 'GET_CURRENT_TAB' })
+          currentTabId = tab?.id
+        }
+        
+        if (currentTabId) {
+          browser.runtime.sendMessage({ type: 'M3U8_FOUND', url: event.data.url, tabId: currentTabId })
+        }
       }
     })
   },

@@ -24,16 +24,21 @@
   const version = browser.runtime.getManifest().version
 
   function onMessage(msg: { type: string; tabId?: number; list?: string[] }) {
+    console.log('Popup: Received message:', msg.type, 'for tab:', msg.tabId, 'current tab:', currentTabId)
     if (msg.type === 'LIST_UPDATED' && msg.tabId === currentTabId && msg.list) {
+      console.log('Popup: Updating list with', msg.list.length, 'items')
       m3u8List.value = msg.list.map(urlToItem)
     }
   }
 
   onMounted(async () => {
+    console.log('Popup: onMounted')
     const tabs = await browser.tabs.query({ active: true, currentWindow: true })
     currentTabId = tabs[0]?.id
+    console.log('Popup: Current tab ID:', currentTabId)
     if (currentTabId === undefined) return
     const list = (await browser.runtime.sendMessage({ type: 'GET_LIST', tabId: currentTabId })) as string[] | undefined
+    console.log('Popup: Received list with', list?.length || 0, 'items')
     m3u8List.value = (list ?? []).map(urlToItem)
     browser.runtime.onMessage.addListener(onMessage)
   })
@@ -144,7 +149,7 @@
             class="text-blue-500 dark:text-blue-400 font-medium">{{ m3u8List.length }}</span>{{ browser.i18n.getMessage('item') }}</span>
       </div>
       <button @click="clearList"
-        class="px-3 py-1 rounded-full bg-red-500 dark:bg-red-900/30 text-white text-xs font-medium hover:bg-red-600 dark:hover:bg-red-900/50 transition-colors">
+        class="px-3 py-1 rounded-full bg-red-600 dark:bg-red-700 text-white text-xs font-medium hover:bg-red-700 dark:hover:bg-red-600 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
         {{ browser.i18n.getMessage('clearList') }}
       </button>
     </div>

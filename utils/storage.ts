@@ -9,9 +9,10 @@ export async function loadAllTabData(): Promise<Map<number, Set<string>>> {
   const map = new Map<number, Set<string>>()
   for (const [key, value] of Object.entries(all)) {
     if (key.startsWith(PREFIX)) {
-      const tabId = parseInt(key.slice(PREFIX.length))
-      if (!isNaN(tabId)) {
-        map.set(tabId, new Set(value as string[]))
+      const tabIdStr = key.slice(PREFIX.length)
+      const tabId = parseInt(tabIdStr, 10)
+      if (!isNaN(tabId) && Array.isArray(value)) {
+        map.set(tabId, new Set(value))
       }
     }
   }

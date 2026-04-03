@@ -1,0 +1,65 @@
+{
+    "extName": {
+        "message": "m3u8视频下载器"
+    },
+    "extDescription": {
+        "message": "下载m3u8视频文件"
+    },
+    "title":{
+        "message": "m3u8视频下载器"
+    },
+    "home":{
+        "message": "主页"
+    },
+    "download":{
+        "message": "下载"
+    },
+    "help":{
+        "message": "帮助"
+    },
+    "about":{
+        "message": "关于"
+    },
+    "copy":{
+        "message": "复制"
+    },
+    "copyTips":{
+        "message": "复制成功！"
+    },
+    "copyUrl":{
+        "message": "复制URL"
+    },
+    "settings":{
+        "message": "设置"
+    },
+    "more":{
+        "message": "更多"
+    },
+    "clear":{
+        "message": "清空"
+    },
+    "unknown":{
+        "message": "未知"
+    },
+    "feedback":{
+        "message": "反馈"
+    },
+    "found":{
+        "message": "已发现: "
+    },
+    "item":{
+        "message": "条"
+    },
+    "clearList":{
+        "message": "清空"
+    },
+    "play":{
+        "message": "播放"
+    },
+    "notFound":{
+        "message": "未检测到任何视频流"
+    },
+    "playTips":{
+        "message": "某些视频必须播放才能被检测到。"
+    }
+}
