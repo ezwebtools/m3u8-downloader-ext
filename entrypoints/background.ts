@@ -1,5 +1,6 @@
-import {  detectMediaFromUrl, detectMedia } from '../utils/detect'
+import { detectMediaFromUrl, detectMedia } from '../utils/detect'
 import { loadAllTabData, saveTabList, deleteTabList, type MediaEntry } from '../utils/storage'
+import { loadSettings, saveSettings, isFormatAllowed, isDomainExcluded, type Settings } from '../utils/settings'
 
 // 语言映射配置
 const LANGUAGE_MAP: Record<string, string> = {
@@ -69,6 +70,22 @@ export default defineBackground(() => {
   let isDataLoaded = false
   const pendingMessages: Array<{msg: any, sender: any, sendResponse: (response?: any) => void}> = []
 
+  interface DownloadSession {
+    url: string
+    format: string
+    filename: string
+  }
+  const downloadSessions = new Map<string, DownloadSession>()
+
+  let currentSettings: Settings
+  loadSettings().then(s => { currentSettings = s })
+
+  browser.storage.sync.onChanged.addListener((changes) => {
+    if (changes['ext_settings']) {
+      loadSettings().then(s => { currentSettings = s })
+    }
+  })
+
   loadAllTabData().then(data => {
     data.forEach((mediaMap, tabId) => {
       tabMap.set(tabId, mediaMap)
@@ -118,6 +135,10 @@ export default defineBackground(() => {
         
         const detectedFormat = detectMedia(details.url, contentType)
         if (detectedFormat) {
+          const settings = currentSettings
+          if (settings && isDomainExcluded(details.url, settings)) return
+          if (settings && !isFormatAllowed(detectedFormat, settings)) return
+          if (settings && settings.minSizeKB > 0 && contentLength !== undefined && contentLength < settings.minSizeKB * 1024) return
           addMedia(details.url, details.tabId, detectedFormat, contentLength)
           processedRequests.add(requestKey)
         }
@@ -152,6 +173,9 @@ export default defineBackground(() => {
   })
 
   browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === 'OPEN_DOWNLOAD_PAGE' || msg.type === 'PAGE_READY') {
+      return handleMessage(msg, sender, sendResponse)
+    }
     if (!isDataLoaded) {
       pendingMessages.push({msg, sender, sendResponse})
       return true
@@ -164,6 +188,28 @@ export default defineBackground(() => {
       const tabId = msg.tabId || sender.tab?.id
       const format = msg.format || 'm3u8'
       if (tabId) addMedia(msg.url, tabId, format)
+    }
+
+    if (msg.type === 'OPEN_DOWNLOAD_PAGE') {
+      const { url, format, filename } = msg
+      const sessionId = crypto.randomUUID()
+      downloadSessions.set(sessionId, { url, format, filename })
+      const baseUrl = browser.runtime.getURL('/download.html' as any)
+      browser.tabs.create({ url: `${baseUrl}?session=${sessionId}` })
+      sendResponse({ sessionId })
+      return true
+    }
+
+    if (msg.type === 'PAGE_READY') {
+      const sessionId = msg.sessionId as string
+      const session = downloadSessions.get(sessionId)
+      if (session) {
+        downloadSessions.delete(sessionId)
+        sendResponse({ ok: true, url: session.url, format: session.format, filename: session.filename })
+      } else {
+        sendResponse({ ok: false })
+      }
+      return true
     }
 
     if (msg.type === 'GET_LIST') {
@@ -182,6 +228,17 @@ export default defineBackground(() => {
     if (msg.type === 'GET_CURRENT_TAB') {
       return Promise.resolve(sender.tab)
     }
+
+    if (msg.type === 'GET_SETTINGS') {
+      loadSettings().then(s => sendResponse(s))
+      return true
+    }
+
+    if (msg.type === 'SAVE_SETTINGS') {
+      saveSettings(msg.settings).then(() => sendResponse({ ok: true }))
+      return true
+    }
+
     return false
   }
 

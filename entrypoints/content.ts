@@ -10,9 +10,13 @@ export default defineContentScript({
       ;(document.head || document.documentElement).appendChild(script)
     }
 
+    window.dispatchEvent(new CustomEvent('m3u8ext:ready'))
+
     let currentTabId: number | undefined
 
     window.addEventListener('message', async (event) => {
+      if (event.source !== window) return
+
       if (
         event.data?.type === 'M3U8_DETECTED' &&
         typeof event.data.url === 'string'
@@ -21,17 +25,43 @@ export default defineContentScript({
           const tab = await browser.runtime.sendMessage({ type: 'GET_CURRENT_TAB' })
           currentTabId = tab?.id
         }
-        
         if (currentTabId) {
-          // 发送MEDIA_FOUND消息，使用检测到的格式或默认为m3u8
-          browser.runtime.sendMessage({ 
-            type: 'MEDIA_FOUND', 
-            url: event.data.url, 
+          browser.runtime.sendMessage({
+            type: 'MEDIA_FOUND',
+            url: event.data.url,
             tabId: currentTabId,
-            format: event.data.format || 'm3u8'
+            format: event.data.format || 'm3u8',
           })
+        }
+        return
+      }
+
+      if (
+        event.data?.type === 'EXT_DOWNLOAD_REQUEST' &&
+        typeof event.data.url === 'string'
+      ) {
+        const { url, format = 'm3u8', filename, requestId } = event.data
+        try {
+          await browser.runtime.sendMessage({
+            type: 'OPEN_DOWNLOAD_PAGE',
+            url,
+            format,
+            filename: filename || getFilenameFromUrl(url),
+          })
+          window.postMessage({ type: 'EXT_DOWNLOAD_RESPONSE', requestId, ok: true }, '*')
+        } catch {
+          window.postMessage({ type: 'EXT_DOWNLOAD_RESPONSE', requestId, ok: false }, '*')
         }
       }
     })
+
+    function getFilenameFromUrl(url: string): string {
+      try {
+        const pathname = new URL(url).pathname
+        return pathname.split('/').pop() || 'download'
+      } catch {
+        return 'download'
+      }
+    }
   },
 })
