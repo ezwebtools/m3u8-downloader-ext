@@ -70,5 +70,80 @@
     },
     "audioPlayError":{
         "message": "音声の再生に失敗しました"
+    },
+    "optionsTitle":{
+        "message": "設定"
+    },
+    "saved":{
+        "message": "保存しました"
+    },
+    "sniffingRules":{
+        "message": "スニッフィングルール"
+    },
+    "sniffingRulesDesc":{
+        "message": "リソースタイプごとにスニッフィングを制御し、最小キャプチャサイズを設定"
+    },
+    "type":{
+        "message": "タイプ"
+    },
+    "sniff":{
+        "message": "スニッフ"
+    },
+    "minSizeKB":{
+        "message": "最小サイズ (KB)"
+    },
+    "streaming":{
+        "message": "ストリーミング"
+    },
+    "streamingHint":{
+        "message": "HLS / DASH / M3U8"
+    },
+    "video":{
+        "message": "動画"
+    },
+    "videoHint":{
+        "message": "MP4, WebM, MKV…"
+    },
+    "audio":{
+        "message": "音声"
+    },
+    "audioHint":{
+        "message": "MP3, AAC, FLAC…"
+    },
+    "image":{
+        "message": "画像"
+    },
+    "imageHint":{
+        "message": "PNG, JPG, WebP…"
+    },
+    "kb":{
+        "message": "KB"
+    },
+    "excludeDomains":{
+        "message": "除外ドメイン"
+    },
+    "excludeDomainsDesc":{
+        "message": "これらのドメインではスニッフィングが無効になります。1行に1つ（例：twitter.com）"
+    },
+    "excludeDomainsPlaceholder":{
+        "message": "twitter.com\nfacebook.com\ninstagram.com"
+    },
+    "keyboardShortcuts":{
+        "message": "キーボードショートカット"
+    },
+    "keyboardShortcutsDesc":{
+        "message": "拡張機能パネルを開くショートカットを設定"
+    },
+    "manageShortcuts":{
+        "message": "Chromeの拡張機能設定でキーボードショートカットを管理"
+    },
+    "openShortcuts":{
+        "message": "ショートカットを開く"
+    },
+    "resetToDefaults":{
+        "message": "デフォルトに戻す"
+    },
+    "resetConfirm":{
+        "message": "もう一度クリックして確認"
     }
 }

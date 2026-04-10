@@ -1,37 +1,45 @@
 <script lang="ts" setup>
-  import { loadSettings, saveSettings, DEFAULT_SETTINGS, type Settings } from '../../utils/settings'
+  import { loadSettings, saveSettings, DEFAULT_SETTINGS, type Settings, type SniffingGroup } from '../../utils/settings'
 
-  const settings = ref<Settings>({ ...DEFAULT_SETTINGS })
+  const settings = ref<Settings>({
+    sniffingRules: {
+      streaming: { ...DEFAULT_SETTINGS.sniffingRules.streaming },
+      video:     { ...DEFAULT_SETTINGS.sniffingRules.video },
+      audio:     { ...DEFAULT_SETTINGS.sniffingRules.audio },
+      image:     { ...DEFAULT_SETTINGS.sniffingRules.image },
+    },
+    excludeDomains: [],
+  })
   const saved = ref(false)
   const excludeDomainsText = ref('')
-  const customExtText = ref('')
   let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-  const LANGUAGES = [
-    { value: 'auto', label: 'Auto (System)' },
-    { value: 'en', label: 'English' },
-    { value: 'zh_CN', label: '中文（简体）' },
+  const t = (key: string) => browser.i18n.getMessage(key)
+
+  const SNIFFING_ROWS: { key: SniffingGroup; labelKey: string; icon: string; hintKey: string }[] = [
+    { key: 'streaming', labelKey: 'streaming', icon: '📡', hintKey: 'streamingHint' },
+    { key: 'video',     labelKey: 'video',     icon: '🎬', hintKey: 'videoHint' },
+    { key: 'audio',     labelKey: 'audio',     icon: '🎵', hintKey: 'audioHint' },
+    { key: 'image',     labelKey: 'image',     icon: '🖼️', hintKey: 'imageHint' },
   ]
 
   onMounted(async () => {
     const s = await loadSettings()
     settings.value = s
     excludeDomainsText.value = s.excludeDomains.join('\n')
-    customExtText.value = s.customExtensions.join(', ')
   })
 
   function parseExcludeDomains(text: string): string[] {
     return text.split('\n').map(d => d.trim()).filter(d => d.length > 0)
   }
 
-  function parseCustomExtensions(text: string): string[] {
-    return text.split(',').map(e => e.trim().toLowerCase().replace(/^\./, '')).filter(e => e.length > 0)
-  }
-
   async function triggerSave() {
-    settings.value.excludeDomains = parseExcludeDomains(excludeDomainsText.value)
-    settings.value.customExtensions = parseCustomExtensions(customExtText.value)
-    await saveSettings(settings.value)
+    const domains = parseExcludeDomains(excludeDomainsText.value)
+    settings.value.excludeDomains = domains
+    await saveSettings({
+      sniffingRules: settings.value.sniffingRules,
+      excludeDomains: Array.from(domains),
+    })
     saved.value = true
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => { saved.value = false }, 2000)
@@ -82,76 +90,51 @@
 
       <div class="space-y-4">
 
-        <!-- Sniffing Settings -->
+        <!-- Sniffing Rules -->
         <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">Sniffing</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Choose which resource types to capture</p>
+            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">{{ browser.i18n.getMessage('sniffingRules') }}</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('sniffingRulesDesc') }}</p>
           </div>
-          <div class="px-5 py-4 space-y-3">
-            <label v-for="(label, key) in { streaming: 'Streaming (HLS / DASH)', video: 'Video (MP4, WebM…)', audio: 'Audio (MP3, AAC…)', image: 'Image (PNG, JPG…)' }"
-              :key="key"
-              class="flex items-center justify-between cursor-pointer group">
-              <span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">{{ label }}</span>
-              <button
-                type="button"
-                role="switch"
-                :aria-checked="settings.sniffingGroups[key as keyof typeof settings.sniffingGroups]"
-                @click="settings.sniffingGroups[key as keyof typeof settings.sniffingGroups] = !settings.sniffingGroups[key as keyof typeof settings.sniffingGroups]; triggerSave()"
-                :class="[
-                  'relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none',
-                  settings.sniffingGroups[key as keyof typeof settings.sniffingGroups]
-                    ? 'bg-blue-600'
-                    : 'bg-gray-200 dark:bg-gray-700'
-                ]"
-              >
-                <span :class="[
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200',
-                  settings.sniffingGroups[key as keyof typeof settings.sniffingGroups] ? 'translate-x-4' : 'translate-x-0'
-                ]" />
-              </button>
-            </label>
+          <!-- 表头 -->
+          <div class="grid grid-cols-[1fr_auto_160px] items-center px-5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Type</span>
+            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center pr-6">Sniff</span>
+            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Min Size (KB)</span>
           </div>
-        </section>
-
-        <!-- Size Threshold -->
-        <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">Minimum File Size</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Only capture files larger than this size. Set to 0 to capture all.</p>
-          </div>
-          <div class="px-5 py-4">
-            <div class="flex items-center gap-3">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                v-model.number="settings.minSizeKB"
-                @change="triggerSave"
-                class="w-32 px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <span class="text-sm text-gray-500 dark:text-gray-400">KB</span>
-              <span v-if="settings.minSizeKB > 0" class="text-xs text-gray-400 dark:text-gray-500">
-                = {{ (settings.minSizeKB / 1024).toFixed(2) }} MB
-              </span>
+          <!-- 数据行 -->
+          <div class="divide-y divide-gray-100 dark:divide-gray-800">
+            <div v-for="row in SNIFFING_ROWS" :key="row.key"
+              class="grid grid-cols-[1fr_auto_160px] items-center px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors duration-150">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="text-lg leading-none select-none">{{ row.icon }}</span>
+                <div>
+                  <p class="text-sm text-gray-800 dark:text-gray-200 font-medium">{{ row.label }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ row.hint }}</p>
+                </div>
+              </div>
+              <div class="flex justify-center pr-6">
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="settings.sniffingRules[row.key].enabled"
+                  @click="settings.sniffingRules[row.key].enabled = !settings.sniffingRules[row.key].enabled; triggerSave()"
+                  :class="['relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none', settings.sniffingRules[row.key].enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700']"
+                >
+                  <span :class="['pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200', settings.sniffingRules[row.key].enabled ? 'translate-x-4' : 'translate-x-0']" />
+                </button>
+              </div>
+              <div class="flex items-center gap-2">
+                <input
+                  type="number" min="0" step="1"
+                  v-model.number="settings.sniffingRules[row.key].minSizeKB"
+                  @change="triggerSave"
+                  :disabled="!settings.sniffingRules[row.key].enabled"
+                  class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-35 disabled:cursor-not-allowed transition-opacity duration-150"
+                />
+                <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">KB</span>
+              </div>
             </div>
-          </div>
-        </section>
-
-        <!-- Custom Extensions -->
-        <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">Custom Extensions</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Add extra formats to capture, comma-separated (e.g. mkv, ogg, f4v)</p>
-          </div>
-          <div class="px-5 py-4">
-            <input
-              type="text"
-              v-model="customExtText"
-              @blur="triggerSave"
-              placeholder="mkv, ogg, f4v"
-              class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
           </div>
         </section>
 
@@ -172,32 +155,6 @@
           </div>
         </section>
 
-        <!-- Language -->
-        <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">Language</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Override the display language</p>
-          </div>
-          <div class="px-5 py-4">
-            <div class="flex gap-2 flex-wrap">
-              <button
-                v-for="lang in LANGUAGES"
-                :key="lang.value"
-                type="button"
-                @click="settings.language = lang.value as Settings['language']; triggerSave()"
-                :class="[
-                  'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors border',
-                  settings.language === lang.value
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500'
-                ]"
-              >
-                {{ lang.label }}
-              </button>
-            </div>
-          </div>
-        </section>
-
         <!-- Keyboard Shortcuts -->
         <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
@@ -206,14 +163,14 @@
           </div>
           <div class="px-5 py-4 flex items-center justify-between">
             <div class="text-sm text-gray-600 dark:text-gray-400">
-              Manage keyboard shortcuts in Chrome's extension settings
+              {{ t('manageShortcuts') }}
             </div>
             <button
               type="button"
               @click="openShortcuts"
               class="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
             >
-              Open Shortcuts
+              {{ t('openShortcuts') }}
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
@@ -226,14 +183,21 @@
           <button
             type="button"
             @click="() => {
-              settings = { ...DEFAULT_SETTINGS }
+              settings = {
+                sniffingRules: {
+                  streaming: { ...DEFAULT_SETTINGS.sniffingRules.streaming },
+                  video:     { ...DEFAULT_SETTINGS.sniffingRules.video },
+                  audio:     { ...DEFAULT_SETTINGS.sniffingRules.audio },
+                  image:     { ...DEFAULT_SETTINGS.sniffingRules.image },
+                },
+                excludeDomains: [],
+              }
               excludeDomainsText = ''
-              customExtText = ''
               triggerSave()
             }"
             class="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
           >
-            Reset to defaults
+            {{ t('resetToDefaults') }}
           </button>
         </div>
 

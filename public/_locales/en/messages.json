@@ -70,5 +70,80 @@
     },
     "audioPlayError":{
         "message": "Audio play error"
+    },
+    "optionsTitle":{
+        "message": "Settings"
+    },
+    "saved":{
+        "message": "Saved"
+    },
+    "sniffingRules":{
+        "message": "Sniffing Rules123"
+    },
+    "sniffingRulesDesc":{
+        "message": "Control sniffing per resource type and set minimum capture size"
+    },
+    "type":{
+        "message": "Type"
+    },
+    "sniff":{
+        "message": "Sniff"
+    },
+    "minSizeKB":{
+        "message": "Min Size (KB)"
+    },
+    "streaming":{
+        "message": "Streaming"
+    },
+    "streamingHint":{
+        "message": "HLS / DASH / M3U8"
+    },
+    "video":{
+        "message": "Video"
+    },
+    "videoHint":{
+        "message": "MP4, WebM, MKV…"
+    },
+    "audio":{
+        "message": "Audio"
+    },
+    "audioHint":{
+        "message": "MP3, AAC, FLAC…"
+    },
+    "image":{
+        "message": "Image"
+    },
+    "imageHint":{
+        "message": "PNG, JPG, WebP…"
+    },
+    "kb":{
+        "message": "KB"
+    },
+    "excludeDomains":{
+        "message": "Exclude Domains"
+    },
+    "excludeDomainsDesc":{
+        "message": "Sniffing will be disabled on these domains. One per line (e.g. twitter.com)"
+    },
+    "excludeDomainsPlaceholder":{
+        "message": "twitter.com\nfacebook.com\ninstagram.com"
+    },
+    "keyboardShortcuts":{
+        "message": "Keyboard Shortcuts"
+    },
+    "keyboardShortcutsDesc":{
+        "message": "Configure shortcuts to open the extension panel"
+    },
+    "manageShortcuts":{
+        "message": "Manage keyboard shortcuts in Chrome's extension settings"
+    },
+    "openShortcuts":{
+        "message": "Open Shortcuts"
+    },
+    "resetToDefaults":{
+        "message": "Reset to defaults"
+    },
+    "resetConfirm":{
+        "message": "Click again to confirm reset"
     }
 }

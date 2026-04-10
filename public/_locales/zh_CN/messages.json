@@ -70,5 +70,80 @@
     },
     "audioPlayError":{
         "message": "音频播放失败"
+    },
+    "optionsTitle":{
+        "message": "设置"
+    },
+    "saved":{
+        "message": "已保存"
+    },
+    "sniffingRules":{
+        "message": "嗅探规则"
+    },
+    "sniffingRulesDesc":{
+        "message": "按资源类型控制嗅探并设置最小捕获大小"
+    },
+    "type":{
+        "message": "类型"
+    },
+    "sniff":{
+        "message": "嗅探"
+    },
+    "minSizeKB":{
+        "message": "最小大小 (KB)"
+    },
+    "streaming":{
+        "message": "流媒体"
+    },
+    "streamingHint":{
+        "message": "HLS / DASH / M3U8"
+    },
+    "video":{
+        "message": "视频"
+    },
+    "videoHint":{
+        "message": "MP4, WebM, MKV…"
+    },
+    "audio":{
+        "message": "音频"
+    },
+    "audioHint":{
+        "message": "MP3, AAC, FLAC…"
+    },
+    "image":{
+        "message": "图片"
+    },
+    "imageHint":{
+        "message": "PNG, JPG, WebP…"
+    },
+    "kb":{
+        "message": "KB"
+    },
+    "excludeDomains":{
+        "message": "排除域名"
+    },
+    "excludeDomainsDesc":{
+        "message": "在这些域名上将禁用嗅探。每行一个域名（例如：twitter.com）"
+    },
+    "excludeDomainsPlaceholder":{
+        "message": "twitter.com\nfacebook.com\ninstagram.com"
+    },
+    "keyboardShortcuts":{
+        "message": "键盘快捷键"
+    },
+    "keyboardShortcutsDesc":{
+        "message": "配置打开扩展面板的快捷键"
+    },
+    "manageShortcuts":{
+        "message": "在 Chrome 扩展设置中管理键盘快捷键"
+    },
+    "openShortcuts":{
+        "message": "打开快捷键设置"
+    },
+    "resetToDefaults":{
+        "message": "恢复默认设置"
+    },
+    "resetConfirm":{
+        "message": "再次点击确认重置"
     }
 }

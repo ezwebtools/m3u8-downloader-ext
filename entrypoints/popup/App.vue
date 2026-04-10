@@ -1,6 +1,6 @@
 <script lang="ts" setup>
   import Hls from 'hls.js'
-  import { loadSettings, saveSettings, DEFAULT_SETTINGS, type Settings } from '../../utils/settings'
+  import { loadSettings, saveSettings, DEFAULT_SETTINGS, type Settings, type SniffingGroup } from '../../utils/settings'
 
   type View = 'list' | 'settings'
 
@@ -57,25 +57,19 @@
   const version = browser.runtime.getManifest().version
 
   // ── Settings view state ──────────────────────────────────────────
-  const settings = ref<Settings>({ ...DEFAULT_SETTINGS })
+  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, sniffingRules: { ...DEFAULT_SETTINGS.sniffingRules } })
   const settingsSaved = ref(false)
   const excludeDomainsText = ref('')
-  const customExtText = ref('')
   let saveTimer: ReturnType<typeof setTimeout> | null = null
+  let textSaveTimer: ReturnType<typeof setTimeout> | null = null
   const resetConfirm = ref(false)
   let resetConfirmTimer: ReturnType<typeof setTimeout> | null = null
-
-  const SNIFFING_LABELS: Record<keyof Settings['sniffingGroups'], string> = {
-    streaming: 'Streaming (HLS / DASH)',
-    video: 'Video (MP4, WebM…)',
-    audio: 'Audio (MP3, AAC…)',
-    image: 'Image (PNG, JPG…)',
-  }
-
-  const LANGUAGES = [
-    { value: 'auto', label: 'Auto' },
-    { value: 'en', label: 'English' },
-    { value: 'zh_CN', label: '中文' },
+  
+  const SNIFFING_ROWS: { key: SniffingGroup; label: string; icon: string }[] = [
+    { key: 'streaming', label: 'Streaming', icon: '📡' },
+    { key: 'video',     label: 'Video',     icon: '🎬' },
+    { key: 'audio',     label: 'Audio',     icon: '🎵' },
+    { key: 'image',     label: 'Image',     icon: '🖼️' },
   ]
 
   // ── Computed ─────────────────────────────────────────────────────
@@ -112,7 +106,6 @@
     const s = await loadSettings()
     settings.value = s
     excludeDomainsText.value = s.excludeDomains.join('\n')
-    customExtText.value = s.customExtensions.join(', ')
   })
 
   onUnmounted(() => {
@@ -123,6 +116,7 @@
     audioPlayers.clear()
     if (saveTimer) clearTimeout(saveTimer)
     if (resetConfirmTimer) clearTimeout(resetConfirmTimer)
+    if (textSaveTimer) clearTimeout(textSaveTimer)
   })
 
   // ── Message handler ───────────────────────────────────────────────
@@ -356,22 +350,21 @@
     return text.split('\n').map(d => d.trim()).filter(d => d.length > 0)
   }
 
-  function parseCustomExtensions(text: string): string[] {
-    return text.split(',').map(e => e.trim().toLowerCase().replace(/^\./, '')).filter(e => e.length > 0)
-  }
-
   async function triggerSave() {
-    settings.value.excludeDomains = parseExcludeDomains(excludeDomainsText.value)
-    settings.value.customExtensions = parseCustomExtensions(customExtText.value)
-    await saveSettings(settings.value)
+    const domains = parseExcludeDomains(excludeDomainsText.value)
+    settings.value.excludeDomains = domains
+    await saveSettings({
+      sniffingRules: settings.value.sniffingRules,
+      excludeDomains: Array.from(domains),
+    })
     settingsSaved.value = true
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => { settingsSaved.value = false }, 2500)
   }
 
-  function toggleGroup(key: keyof Settings['sniffingGroups']) {
-    settings.value.sniffingGroups[key] = !settings.value.sniffingGroups[key]
-    triggerSave()
+  function triggerTextSave() {
+    if (textSaveTimer) clearTimeout(textSaveTimer)
+    textSaveTimer = setTimeout(() => { triggerSave() }, 600)
   }
 
   function openShortcuts() {
@@ -386,15 +379,31 @@
       return
     }
     resetConfirm.value = false
-    settings.value = { ...DEFAULT_SETTINGS, sniffingGroups: { ...DEFAULT_SETTINGS.sniffingGroups } }
+    settings.value = {
+      sniffingRules: {
+        streaming: { ...DEFAULT_SETTINGS.sniffingRules.streaming },
+        video:     { ...DEFAULT_SETTINGS.sniffingRules.video },
+        audio:     { ...DEFAULT_SETTINGS.sniffingRules.audio },
+        image:     { ...DEFAULT_SETTINGS.sniffingRules.image },
+      },
+      excludeDomains: [],
+    }
     excludeDomainsText.value = ''
-    customExtText.value = ''
     triggerSave()
   }
 
   function openSettings() {
     view.value = 'settings'
     showMore.value = false
+  }
+
+  async function backToList() {
+    if (textSaveTimer) {
+      clearTimeout(textSaveTimer)
+      textSaveTimer = null
+    }
+    await triggerSave()
+    view.value = 'list'
   }
 </script>
 
@@ -612,7 +621,7 @@
         <!-- Header -->
         <div class="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-900 shadow-sm">
           <div class="flex items-center gap-2">
-            <button @click="view = 'list'"
+            <button @click="backToList"
               class="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 active:scale-90 transition-all duration-150">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -635,7 +644,7 @@
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
               </svg>
-              Saved
+              {{ browser.i18n.getMessage('saved') }}
             </div>
           </Transition>
         </div>
@@ -646,59 +655,47 @@
           <div class="bg-gray-50 dark:bg-gray-800/80 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700/50 shadow-sm">
             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700/70 flex items-center gap-2">
               <div class="w-1.5 h-4 bg-blue-500 rounded-full"></div>
-              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Sniffing</p>
+              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ browser.i18n.getMessage('sniffingRules') }}</p>
             </div>
+            <!-- 表头 -->
+            <div class="grid grid-cols-[1fr_auto_120px] items-center px-4 py-2 border-b border-gray-100 dark:border-gray-700/50 bg-gray-100/60 dark:bg-gray-700/40">
+              <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{{ browser.i18n.getMessage('type') }}</span>
+              <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center pr-3">{{ browser.i18n.getMessage('sniffingRulesDesc') }}</span>
+              <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{{ browser.i18n.getMessage('minSizeKB') }}</span>
+            </div>
+            <!-- 数据行 -->
             <div class="divide-y divide-gray-100 dark:divide-gray-700/50">
-              <label v-for="(label, key) in SNIFFING_LABELS" :key="key"
-                class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-100/60 dark:hover:bg-gray-700/40 transition-colors duration-150">
-                <span class="text-sm text-gray-700 dark:text-gray-300">{{ label }}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  :aria-checked="settings.sniffingGroups[key]"
-                  @click="toggleGroup(key)"
-                  :class="['relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-250 ease-in-out focus:outline-none shadow-inner', settings.sniffingGroups[key] ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600']"
-                >
-                  <span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-250 ease-in-out', settings.sniffingGroups[key] ? 'translate-x-5' : 'translate-x-0']" />
-                </button>
-              </label>
-            </div>
-          </div>
-
-          <!-- Min Size -->
-          <div class="bg-gray-50 dark:bg-gray-800/80 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700/50 shadow-sm">
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700/70 flex items-center gap-2">
-              <div class="w-1.5 h-4 bg-orange-500 rounded-full"></div>
-              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Minimum Size</p>
-            </div>
-            <div class="px-4 py-4 flex items-center gap-3">
-              <input
-                type="number" min="0" step="1"
-                v-model.number="settings.minSizeKB"
-                @change="triggerSave"
-                class="w-28 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 shadow-sm"
-              />
-              <span class="text-sm font-medium text-gray-500 dark:text-gray-400">KB</span>
-              <span v-if="settings.minSizeKB > 0" class="text-xs text-orange-500 dark:text-orange-400 font-medium">≈ {{ (settings.minSizeKB / 1024).toFixed(1) }} MB</span>
-              <span v-else class="text-xs text-green-500 dark:text-green-400 font-medium">Capture all</span>
-            </div>
-          </div>
-
-          <!-- Custom Extensions -->
-          <div class="bg-gray-50 dark:bg-gray-800/80 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700/50 shadow-sm">
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700/70 flex items-center gap-2">
-              <div class="w-1.5 h-4 bg-purple-500 rounded-full"></div>
-              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Custom Extensions</p>
-            </div>
-            <div class="px-4 py-4">
-              <input
-                type="text"
-                v-model="customExtText"
-                @blur="triggerSave"
-                placeholder="mkv, ogg, f4v"
-                class="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 shadow-sm"
-              />
-              <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">Comma-separated, e.g. mkv, ogg, f4v</p>
+              <div v-for="row in SNIFFING_ROWS" :key="row.key"
+                class="grid grid-cols-[1fr_auto_120px] items-center px-4 py-3 hover:bg-gray-100/60 dark:hover:bg-gray-700/40 transition-colors duration-150">
+                <!-- 第一列：类型 -->
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="text-base leading-none select-none">{{ row.icon }}</span>
+                  <span class="text-sm text-gray-700 dark:text-gray-300 font-medium">{{ row.label }}</span>
+                </div>
+                <!-- 第二列：嗅探开关 -->
+                <div class="flex justify-center pr-3">
+                  <button
+                    type="button"
+                    role="switch"
+                    :aria-checked="settings.sniffingRules[row.key].enabled"
+                    @click="settings.sniffingRules[row.key].enabled = !settings.sniffingRules[row.key].enabled; triggerSave()"
+                    :class="['relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner', settings.sniffingRules[row.key].enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600']"
+                  >
+                    <span :class="['pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform duration-200 ease-in-out', settings.sniffingRules[row.key].enabled ? 'translate-x-4' : 'translate-x-0']" />
+                  </button>
+                </div>
+                <!-- 第三列：最小大小 -->
+                <div class="flex items-center gap-1.5">
+                  <input
+                    type="number" min="0" step="1"
+                    v-model.number="settings.sniffingRules[row.key].minSizeKB"
+                    @change="triggerSave"
+                    :disabled="!settings.sniffingRules[row.key].enabled"
+                    class="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 disabled:opacity-35 disabled:cursor-not-allowed"
+                  />
+                  <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">KB</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -706,31 +703,18 @@
           <div class="bg-gray-50 dark:bg-gray-800/80 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700/50 shadow-sm">
             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700/70 flex items-center gap-2">
               <div class="w-1.5 h-4 bg-red-500 rounded-full"></div>
-              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Exclude Domains</p>
+              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ browser.i18n.getMessage('excludeDomains') }}</p>
             </div>
             <div class="px-4 py-4">
               <textarea
                 v-model="excludeDomainsText"
+                @input="triggerTextSave"
                 @blur="triggerSave"
                 rows="3"
                 placeholder="twitter.com&#10;facebook.com"
                 class="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 resize-none font-mono shadow-sm"
               />
-              <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">One domain per line, supports subdomains</p>
-            </div>
-          </div>
-
-          <!-- Language -->
-          <div class="bg-gray-50 dark:bg-gray-800/80 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700/50 shadow-sm">
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700/70 flex items-center gap-2">
-              <div class="w-1.5 h-4 bg-teal-500 rounded-full"></div>
-              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Language</p>
-            </div>
-            <div class="px-4 py-4 flex gap-2">
-              <button v-for="lang in LANGUAGES" :key="lang.value" type="button"
-                @click="settings.language = lang.value as Settings['language']; triggerSave()"
-                :class="['px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 border', settings.language === lang.value ? 'bg-blue-500 text-white border-blue-500 shadow-sm shadow-blue-200 dark:shadow-blue-900 scale-105' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-blue-400 hover:scale-102']"
-              >{{ lang.label }}</button>
+              <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ browser.i18n.getMessage('excludeDomainsDesc') }}</p>
             </div>
           </div>
 
@@ -738,10 +722,10 @@
           <div class="bg-gray-50 dark:bg-gray-800/80 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700/50 shadow-sm">
             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700/70 flex items-center gap-2">
               <div class="w-1.5 h-4 bg-indigo-500 rounded-full"></div>
-              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Keyboard Shortcuts</p>
+              <p class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{{ browser.i18n.getMessage('keyboardShortcuts') }}</p>
             </div>
             <div class="px-4 py-4 flex items-center justify-between">
-              <p class="text-sm text-gray-600 dark:text-gray-400">Configure shortcuts in Chrome settings</p>
+              <p class="text-sm text-gray-600 dark:text-gray-400">{{ browser.i18n.getMessage('keyboardShortcutsDesc') }}</p>
               <button type="button" @click="openShortcuts"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 active:scale-95 transition-all duration-150">
                 Open
@@ -768,13 +752,13 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                Click again to confirm reset
+                {{ browser.i18n.getMessage('resetConfirm') }}
               </span>
               <span v-else class="flex items-center justify-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Reset to Defaults
+                {{ browser.i18n.getMessage('resetToDefaults') }}
               </span>
             </button>
           </div>

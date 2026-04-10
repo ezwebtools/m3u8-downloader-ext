@@ -70,5 +70,80 @@
     },
     "audioPlayError":{
         "message": "音訊播放失敗"
+    },
+    "optionsTitle":{
+        "message": "設定"
+    },
+    "saved":{
+        "message": "已儲存"
+    },
+    "sniffingRules":{
+        "message": "嗅探規則"
+    },
+    "sniffingRulesDesc":{
+        "message": "按資源類型控制嗅探並設定最小擷取大小"
+    },
+    "type":{
+        "message": "類型"
+    },
+    "sniff":{
+        "message": "嗅探"
+    },
+    "minSizeKB":{
+        "message": "最小大小 (KB)"
+    },
+    "streaming":{
+        "message": "串流媒體"
+    },
+    "streamingHint":{
+        "message": "HLS / DASH / M3U8"
+    },
+    "video":{
+        "message": "影片"
+    },
+    "videoHint":{
+        "message": "MP4, WebM, MKV…"
+    },
+    "audio":{
+        "message": "音訊"
+    },
+    "audioHint":{
+        "message": "MP3, AAC, FLAC…"
+    },
+    "image":{
+        "message": "圖片"
+    },
+    "imageHint":{
+        "message": "PNG, JPG, WebP…"
+    },
+    "kb":{
+        "message": "KB"
+    },
+    "excludeDomains":{
+        "message": "排除網域"
+    },
+    "excludeDomainsDesc":{
+        "message": "在這些網域上將停用嗅探。每行一個網域（例如：twitter.com）"
+    },
+    "excludeDomainsPlaceholder":{
+        "message": "twitter.com\nfacebook.com\ninstagram.com"
+    },
+    "keyboardShortcuts":{
+        "message": "鍵盤快速鍵"
+    },
+    "keyboardShortcutsDesc":{
+        "message": "設定開啟擴充功能面板的快速鍵"
+    },
+    "manageShortcuts":{
+        "message": "在 Chrome 擴充功能設定中管理鍵盤快速鍵"
+    },
+    "openShortcuts":{
+        "message": "開啟快速鍵設定"
+    },
+    "resetToDefaults":{
+        "message": "恢復預設設定"
+    },
+    "resetConfirm":{
+        "message": "再次點擊確認重置"
     }
 }

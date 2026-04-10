@@ -1,6 +1,6 @@
 import { detectMediaFromUrl, detectMedia } from '../utils/detect'
 import { loadAllTabData, saveTabList, deleteTabList, type MediaEntry } from '../utils/storage'
-import { loadSettings, saveSettings, isFormatAllowed, isDomainExcluded, type Settings } from '../utils/settings'
+import { loadSettings, saveSettings, isFormatAllowed, isSizeAllowed, isDomainExcluded, type Settings } from '../utils/settings'
 
 // 语言映射配置
 const LANGUAGE_MAP: Record<string, string> = {
@@ -80,7 +80,7 @@ export default defineBackground(() => {
   let currentSettings: Settings
   loadSettings().then(s => { currentSettings = s })
 
-  browser.storage.sync.onChanged.addListener((changes) => {
+  browser.storage.local.onChanged.addListener((changes) => {
     if (changes['ext_settings']) {
       loadSettings().then(s => { currentSettings = s })
     }
@@ -138,7 +138,7 @@ export default defineBackground(() => {
           const settings = currentSettings
           if (settings && isDomainExcluded(details.url, settings)) return
           if (settings && !isFormatAllowed(detectedFormat, settings)) return
-          if (settings && settings.minSizeKB > 0 && contentLength !== undefined && contentLength < settings.minSizeKB * 1024) return
+          if (settings && !isSizeAllowed(detectedFormat, contentLength, settings)) return
           addMedia(details.url, details.tabId, detectedFormat, contentLength)
           processedRequests.add(requestKey)
         }

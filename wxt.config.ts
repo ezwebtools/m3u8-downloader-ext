@@ -17,5 +17,6 @@ export default defineConfig({
         matches: ['<all_urls>'],
       },
     ],
+    homepage_url: 'https://github.com/1337-ops/m3u8-downloader-ext',
   },
 });
