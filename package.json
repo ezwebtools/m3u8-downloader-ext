@@ -18,6 +18,7 @@
   "dependencies": {
     "dashjs": "^5.1.1",
     "hls.js": "^1.6.15",
+    "mediainfo.js": "^0.3.7",
     "vue": "^3.5.29"
   },
   "devDependencies": {

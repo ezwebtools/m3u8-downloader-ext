@@ -11,6 +11,7 @@
     size?: number
     width?: number
     height?: number
+    duration?: number
   }
 
   function itemToMediaItem(item: any): MediaItem {
@@ -39,7 +40,6 @@
 
   // ── List view state ──────────────────────────────────────────────
   const view = ref<View>('list')
-  const expandedId = ref<number | null>(null)
   const showMore = ref(false)
   const showToast = ref(false)
   const toastMessage = ref('')
@@ -60,19 +60,20 @@
     return 'other'
   }
   const playingId = ref<number | null>(null)
-  const previewingId = ref<number | null>(null)
   const audioPlayingId = ref<number | null>(null)
   const hlsInstances = ref<Map<number, Hls>>(new Map())
   const dashInstances = ref<Map<number, dashjs.MediaPlayerClass>>(new Map())
   const listLoaded = ref(false)
   const selectedItems = ref<Set<number>>(new Set())
-  const isBatchMode = ref(false)
-  const isWaterfallView = ref(true)
   const imageLoadStatus = ref<Map<string, boolean>>(new Map())
   const previewImageUrl = ref('')
-  const showImageFilter = ref(false)
-  const imageSizeFilter = ref<{ min: number; max: number }>({ min: 0, max: 0 })
-  const imageDimensionFilter = ref<{ minWidth: number; minHeight: number }>({ minWidth: 0, minHeight: 0 })
+  const showFilter = ref(false)
+  const sizeFilter = ref<{ min: number; max: number }>({ min: 0, max: 0 })
+  const dimensionFilter = ref<{ minWidth: number; minHeight: number }>({ minWidth: 0, minHeight: 0 })
+  const typeFilter = ref<string>('any')
+  const resolutionFilter = ref<string>('any')
+  const videoDimensionCache = ref<Map<string, { width: number; height: number }>>(new Map())
+  const audioDurationCache = ref<Map<string, number>>(new Map())
 
   interface AudioPlayerState {
     audioCtx: AudioContext
@@ -114,20 +115,76 @@
     return counts
   })
 
+  const typeOptions = computed(() => {
+    const formatCounts: Record<string, number> = {}
+    const tabMedia = activeTab.value === 'all' 
+      ? mediaList.value 
+      : mediaList.value.filter(i => getMediaType(i.format) === activeTab.value)
+    
+    tabMedia.forEach(item => {
+      const fmt = item.format.toLowerCase()
+      formatCounts[fmt] = (formatCounts[fmt] || 0) + 1
+    })
+
+    let allFormats: string[] = []
+    if (activeTab.value === 'all') {
+      allFormats = [...STREAM_FORMATS, ...VIDEO_FORMATS, ...AUDIO_FORMATS, ...IMAGE_FORMATS]
+    } else if (activeTab.value === 'stream') {
+      allFormats = [...STREAM_FORMATS]
+    } else if (activeTab.value === 'video') {
+      allFormats = [...VIDEO_FORMATS]
+    } else if (activeTab.value === 'audio') {
+      allFormats = [...AUDIO_FORMATS]
+    } else if (activeTab.value === 'image') {
+      allFormats = [...IMAGE_FORMATS]
+    }
+
+    const uniqueFormats = [...new Set(allFormats)]
+    
+    const options = uniqueFormats.map(format => ({
+      value: format,
+      label: getFormatLabel(format),
+      count: formatCounts[format] || 0,
+      disabled: !formatCounts[format]
+    }))
+    
+    options.sort((a, b) => {
+      if (a.disabled !== b.disabled) return a.disabled ? 1 : -1
+      return b.count - a.count
+    })
+    
+    return options
+  })
+
   const filteredMediaList = computed(() => {
     let list = mediaList.value
     if (activeTab.value !== 'all') {
       list = list.filter(i => getMediaType(i.format) === activeTab.value)
     }
-    if (activeTab.value === 'image') {
-      list = list.filter(item => {
-        if (imageSizeFilter.value.min > 0 && (item.size ?? 0) < imageSizeFilter.value.min * 1024) return false
-        if (imageSizeFilter.value.max > 0 && (item.size ?? 0) > imageSizeFilter.value.max * 1024) return false
-        if (imageDimensionFilter.value.minWidth > 0 && (item.width ?? 0) < imageDimensionFilter.value.minWidth) return false
-        if (imageDimensionFilter.value.minHeight > 0 && (item.height ?? 0) < imageDimensionFilter.value.minHeight) return false
-        return true
-      })
+    if (typeFilter.value !== 'any') {
+      list = list.filter(i => i.format.toLowerCase() === typeFilter.value)
     }
+    list = list.filter(item => {
+      if (sizeFilter.value.min > 0 && (item.size ?? 0) < sizeFilter.value.min * 1024) return false
+      if (sizeFilter.value.max > 0 && (item.size ?? 0) > sizeFilter.value.max * 1024) return false
+      if (activeTab.value === 'image') {
+        if (dimensionFilter.value.minWidth > 0 && (item.width ?? 0) < dimensionFilter.value.minWidth) return false
+        if (dimensionFilter.value.minHeight > 0 && (item.height ?? 0) < dimensionFilter.value.minHeight) return false
+      }
+      if (activeTab.value === 'video' && resolutionFilter.value !== 'any') {
+        const h = Math.min(item.width ?? 0, item.height ?? 0)
+        switch (resolutionFilter.value) {
+          case '8k': if (h < 4320) return false; break
+          case '4k': if (h < 2160) return false; break
+          case '1080p': if (h < 1080) return false; break
+          case '720p': if (h < 720) return false; break
+          case '480p': if (h < 480) return false; break
+          case '360p': if (h < 360) return false; break
+          case 'sd': if (h >= 360) return false; break
+        }
+      }
+      return true
+    })
     return list
   })
 
@@ -145,6 +202,9 @@
     const s = await loadSettings()
     settings.value = s
     excludeDomainsText.value = s.excludeDomains.join('\n')
+
+    fetchAllVideoDimensions()
+    fetchAllAudioDurations()
   })
 
   onUnmounted(() => {
@@ -241,12 +301,113 @@
     return map[format.toLowerCase()] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
   }
 
+  const getResolutionLabel = (
+    width?: number,
+    height?: number
+  ): string | null => {
+
+    if (!width || !height) return null
+
+    const h = Math.min(width, height)
+
+    if (h >= 4320) return '8K'
+    if (h >= 2160) return '4K'
+    if (h >= 1080) return '1080P'
+    if (h >= 720) return '720P'
+    if (h >= 480) return '480P'
+    if (h >= 360) return '360P'
+    return 'SD'
+  }
+
+  const getResolutionColor = (width?: number, height?: number): string => {
+    if (!width || !height) return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+    const max = Math.max(width, height)
+    if (max >= 2560) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+    if (max >= 1920) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  }
+
+  const getSizeColor = (): string => {
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  }
+
   const isStreamFormat = (f: string) => STREAM_FORMATS.includes(f.toLowerCase())
+  const isVideoFormat = (f: string) => VIDEO_FORMATS.includes(f.toLowerCase())
   const isImageFormat = (f: string) => IMAGE_FORMATS.includes(f.toLowerCase())
   const isAudioFormat = (f: string) => AUDIO_FORMATS.includes(f.toLowerCase())
 
-  const toggleExpand = (id: number) => {
-    expandedId.value = expandedId.value === id ? null : id
+  const fetchVideoDimensions = async (url: string): Promise<{ width: number; height: number } | null> => {
+    if (videoDimensionCache.value.has(url)) {
+      return videoDimensionCache.value.get(url)!
+    }
+    
+    try {
+      const dimensions = await browser.runtime.sendMessage({ type: 'GET_VIDEO_DIMENSIONS', url })
+      if (dimensions) {
+        videoDimensionCache.value.set(url, dimensions)
+        return dimensions
+      }
+    } catch (e) {
+      console.warn('Failed to fetch video dimensions:', e)
+    }
+    return null
+  }
+
+  const fetchAllVideoDimensions = async () => {
+    const videoItems = mediaList.value.filter(item => isVideoFormat(item.format))
+    for (const item of videoItems) {
+      if (!item.width || !item.height || !item.duration) {
+        const info = await browser.runtime.sendMessage({ type: 'GET_MEDIA_INFO', url: item.url })
+        if (info) {
+          if (info.width && info.height) {
+            item.width = info.width
+            item.height = info.height
+          }
+          if (info.duration) {
+            item.duration = info.duration
+          }
+        }
+      }
+    }
+  }
+
+  const fetchAudioDuration = async (url: string): Promise<number | null> => {
+    if (audioDurationCache.value.has(url)) {
+      return audioDurationCache.value.get(url)!
+    }
+    
+    try {
+      const result = await browser.runtime.sendMessage({ type: 'GET_AUDIO_DURATION', url })
+      if (result?.duration) {
+        audioDurationCache.value.set(url, result.duration)
+        return result.duration
+      }
+    } catch (e) {
+      console.warn('Failed to fetch audio duration:', e)
+    }
+    return null
+  }
+
+  const fetchAllAudioDurations = async () => {
+    const audioItems = mediaList.value.filter(item => isAudioFormat(item.format))
+    for (const item of audioItems) {
+      if (!item.duration) {
+        const duration = await fetchAudioDuration(item.url)
+        if (duration) {
+          item.duration = duration
+        }
+      }
+    }
+  }
+
+  const formatDuration = (seconds: number): string => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = Math.floor(seconds % 60)
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+    }
+    return `${m}:${s.toString().padStart(2, '0')}`
   }
 
   const showToastMsg = (msg: string) => {
@@ -321,6 +482,15 @@
     }
   }
 
+  watch(activeTab, () => {
+    showFilter.value = false
+    typeFilter.value = 'any'
+    sizeFilter.value = { min: 0, max: 0 }
+    dimensionFilter.value = { minWidth: 0, minHeight: 0 }
+    resolutionFilter.value = 'any'
+    selectedItems.value.clear()
+  })
+
   watch(audioPlayingId, async (newId, oldId) => {
     if (oldId !== null && oldId !== newId) stopAudioPlayback(oldId)
     if (newId === null) return
@@ -334,21 +504,15 @@
       else {
         if (playingId.value !== null) stopPlayback(playingId.value)
         playingId.value = index
-        if (expandedId.value !== index) expandedId.value = index
       }
     } else if (isAudioFormat(format)) {
       if (audioPlayingId.value === index) stopAudioPlayback(index)
       else {
         if (audioPlayingId.value !== null) stopAudioPlayback(audioPlayingId.value)
         audioPlayingId.value = index
-        if (expandedId.value !== index) expandedId.value = index
       }
     } else if (isImageFormat(format)) {
-      if (previewingId.value === index) previewingId.value = null
-      else {
-        previewingId.value = index
-        if (expandedId.value !== index) expandedId.value = index
-      }
+      previewImage(url)
     } else {
       browser.tabs.create({ url })
     }
@@ -420,19 +584,24 @@
     previewImageUrl.value = url
   }
 
+  const onImageLoad = (event: Event, url: string) => {
+    const img = event.target as HTMLImageElement
+    if (img.naturalWidth && img.naturalHeight) {
+      const item = mediaList.value.find(i => i.url === url)
+      if (item && (!item.width || !item.height)) {
+        item.width = img.naturalWidth
+        item.height = img.naturalHeight
+      }
+    }
+    imageLoadStatus.set(url, true)
+  }
+
   const downloadUrl = (url: string, format: string) => {
     const filename = getDownloadFilename(url, format)
     if (isStreamFormat(format)) {
       browser.runtime.sendMessage({ type: 'OPEN_DOWNLOAD_PAGE', url, format, filename })
     } else {
       browser.downloads.download({ url, filename })
-    }
-  }
-
-  const toggleBatchMode = () => {
-    isBatchMode.value = !isBatchMode.value
-    if (!isBatchMode.value) {
-      selectedItems.value.clear()
     }
   }
 
@@ -464,7 +633,6 @@
       }
     })
     showToastMsg(`已开始下载 ${items.length} 个文件`)
-    isBatchMode.value = false
     selectedItems.value.clear()
   }
 
@@ -554,44 +722,58 @@
     >
       <div v-if="view === 'list'" class="flex flex-col h-full">
         <div class="border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-900 z-10 shrink-0">
-          <nav class="flex -mb-px">
-            <button @click="activeTab = 'all'" :class="[activeTab === 'all' ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', 'flex-1 py-2.5 px-1 text-center border-b-2 font-medium text-xs transition-colors']">
-              ALL({{ tabCounts.all }})
-            </button>
-            <button @click="activeTab = 'stream'" :class="[activeTab === 'stream' ? 'border-purple-500 text-purple-600 dark:text-purple-400 dark:border-purple-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', 'flex-1 py-2.5 px-1 text-center border-b-2 font-medium text-xs transition-colors']">
-              Stream({{ tabCounts.stream }})
-            </button>
-            <button @click="activeTab = 'video'" :class="[activeTab === 'video' ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', 'flex-1 py-2.5 px-1 text-center border-b-2 font-medium text-xs transition-colors']">
-              Video({{ tabCounts.video }})
-            </button>
-            <button @click="activeTab = 'audio'" :class="[activeTab === 'audio' ? 'border-green-500 text-green-600 dark:text-green-400 dark:border-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', 'flex-1 py-2.5 px-1 text-center border-b-2 font-medium text-xs transition-colors']">
-              Audio({{ tabCounts.audio }})
-            </button>
-            <button @click="activeTab = 'image'" :class="[activeTab === 'image' ? 'border-orange-500 text-orange-600 dark:text-orange-400 dark:border-orange-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300', 'flex-1 py-2.5 px-1 text-center border-b-2 font-medium text-xs transition-colors']">
-              Image({{ tabCounts.image }})
-            </button>
-          </nav>
-          <div v-if="activeTab === 'image' && filteredMediaList.length > 0 && !isBatchMode" class="flex items-center justify-between px-2 py-1 border-b border-gray-100 dark:border-gray-800">
-            <button @click="showImageFilter = !showImageFilter" 
+          <div class="flex items-center px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+            <img src="/icon/48.png" alt="FlowPick" class="w-6 h-6 mr-2" />
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-bold text-gray-800 dark:text-gray-100">FlowPick</span>
+              <span class="text-[10px] text-gray-400 dark:text-gray-500"> | 智能嗅探，一键下载</span>
+            </div>
+          </div>
+          <div class="flex items-center">
+            <nav class="flex -mb-px flex-1">
+              <button @click="activeTab = 'all'" :class="[activeTab === 'all' ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
+                ALL({{ tabCounts.all }})
+              </button>
+              <button @click="activeTab = 'stream'" :class="[activeTab === 'stream' ? 'border-purple-500 text-purple-600 dark:text-purple-400 dark:border-purple-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
+                Stream({{ tabCounts.stream }})
+              </button>
+              <button @click="activeTab = 'video'" :class="[activeTab === 'video' ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
+                Video({{ tabCounts.video }})
+              </button>
+              <button @click="activeTab = 'audio'" :class="[activeTab === 'audio' ? 'border-green-500 text-green-600 dark:text-green-400 dark:border-green-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
+                Audio({{ tabCounts.audio }})
+              </button>
+              <button @click="activeTab = 'image'" :class="[activeTab === 'image' ? 'border-orange-500 text-orange-600 dark:text-orange-400 dark:border-orange-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
+                Image({{ tabCounts.image }})
+              </button>
+            </nav>
+          </div>
+          <div v-if="filteredMediaList.length > 0" class="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
+            <div class="flex items-center gap-2">
+              <button @click="toggleSelectAll" class="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all" :title="selectedItems.size === filteredMediaList.length ? '取消全选' : '全选'">
+                <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <circle cx="12" cy="12" r="9" />
+                  <path v-if="selectedItems.size === filteredMediaList.length" stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" />
+                </svg>
+              </button>
+              <button @click="batchDownload" :disabled="selectedItems.size === 0" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-400 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white rounded-lg transition-all disabled:cursor-not-allowed shadow-sm" title="下载所选" >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span v-if="selectedItems.size > 0">{{ selectedItems.size }}</span>
+              </button>
+            </div>
+            <button @click="showFilter = !showFilter" 
               :class="[
-                'flex items-center gap-1 text-xs transition-colors',
-                showImageFilter || imageSizeFilter.min > 0 || imageSizeFilter.max > 0 || imageDimensionFilter.minWidth > 0 || imageDimensionFilter.minHeight > 0
-                  ? 'text-blue-500 dark:text-blue-400' 
-                  : 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'
-              ]">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                'flex items-center justify-center w-7 h-7 rounded-md transition-all',
+                showFilter || typeFilter !== 'any' || sizeFilter.min > 0 || sizeFilter.max > 0 || dimensionFilter.minWidth > 0 || dimensionFilter.minHeight > 0 || resolutionFilter !== 'any'
+                  ? 'text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
+                  : 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              ]"
+              title="过滤">
+              <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
               </svg>
-              <span>过滤</span>
-            </button>
-            <button @click="isWaterfallView = !isWaterfallView" class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
-              <svg v-if="isWaterfallView" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-              <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-              </svg>
-              <span>{{ isWaterfallView ? '列表' : '瀑布流' }}</span>
             </button>
           </div>
           <Transition
@@ -602,59 +784,61 @@
             leave-from-class="opacity-100 max-h-32"
             leave-to-class="opacity-0 max-h-0"
           >
-            <div v-if="activeTab === 'image' && showImageFilter && !isBatchMode" class="px-2 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
+            <div v-if="showFilter" class="px-2 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
               <div class="flex flex-wrap gap-3 text-xs">
                 <div class="flex items-center gap-1.5">
+                  <span class="text-gray-500 dark:text-gray-400">类型:</span>
+                  <select v-model="typeFilter"
+                    class="px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                    <option value="any">Any</option>
+                    <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
+                      {{ opt.label }}({{ opt.count }})
+                    </option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-1.5">
                   <span class="text-gray-500 dark:text-gray-400">大小:</span>
-                  <input type="number" v-model.number="imageSizeFilter.min" min="0" 
+                  <input type="number" v-model.number="sizeFilter.min" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
                     placeholder="最小" />
                   <span class="text-gray-400">-</span>
-                  <input type="number" v-model.number="imageSizeFilter.max" min="0" 
+                  <input type="number" v-model.number="sizeFilter.max" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
                     placeholder="最大" />
                   <span class="text-gray-400">KB</span>
                 </div>
-                <div class="flex items-center gap-1.5">
+                <div v-if="activeTab === 'image'" class="flex items-center gap-1.5">
                   <span class="text-gray-500 dark:text-gray-400">尺寸:</span>
-                  <input type="number" v-model.number="imageDimensionFilter.minWidth" min="0" 
+                  <input type="number" v-model.number="dimensionFilter.minWidth" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
                     placeholder="宽" />
                   <span class="text-gray-400">×</span>
-                  <input type="number" v-model.number="imageDimensionFilter.minHeight" min="0" 
+                  <input type="number" v-model.number="dimensionFilter.minHeight" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
                     placeholder="高" />
                   <span class="text-gray-400">px</span>
                 </div>
-                <button @click="imageSizeFilter = { min: 0, max: 0 }; imageDimensionFilter = { minWidth: 0, minHeight: 0 }" 
-                  class="px-2 py-0.5 text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
+                <div v-if="activeTab === 'video'" class="flex items-center gap-1.5">
+                  <span class="text-gray-500 dark:text-gray-400">分辨率:</span>
+                  <select v-model="resolutionFilter"
+                    class="px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                    <option value="any">Any</option>
+                    <option value="8k">8K</option>
+                    <option value="4k">4K</option>
+                    <option value="1080p">1080P</option>
+                    <option value="720p">720P</option>
+                    <option value="480p">480P</option>
+                    <option value="360p">360P</option>
+                    <option value="sd">SD</option>
+                  </select>
+                </div>
+                <button @click="typeFilter = 'any'; sizeFilter = { min: 0, max: 0 }; dimensionFilter = { minWidth: 0, minHeight: 0 }; resolutionFilter = 'any'" 
+                  class="px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-900 dark:hover:text-white rounded transition-all duration-150">
                   重置
                 </button>
               </div>
             </div>
           </Transition>
-          <div v-if="isBatchMode && filteredMediaList.length > 0" class="flex items-center justify-between px-2 py-1.5 bg-blue-50 dark:bg-blue-900/30 border-b border-blue-200 dark:border-blue-800">
-            <div class="flex items-center gap-1.5">
-              <button @click="toggleSelectAll" class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path v-if="selectedItems.size === filteredMediaList.length" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {{ selectedItems.size === filteredMediaList.length ? '取消' : '全选' }}
-              </button>
-              <span class="text-xs text-gray-500 dark:text-gray-400">({{ selectedItems.size }})</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <button @click="batchDownload" :disabled="selectedItems.size === 0" class="px-2 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white rounded transition-colors disabled:cursor-not-allowed">
-                下载
-              </button>
-              <button @click="toggleBatchMode" class="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="关闭">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
         </div>
 
         <main class="flex-1 overflow-y-auto min-h-0">
@@ -671,25 +855,24 @@
           </div>
 
           <template v-else>
-            <div v-if="activeTab === 'image' && isWaterfallView" class="p-2 columns-2 sm:columns-3 gap-2">
+            <div v-if="activeTab === 'image'" class="p-2 columns-2 sm:columns-3 gap-2">
               <div v-for="(item, index) in filteredMediaList" :key="item.url + index"
-                @click="isBatchMode && toggleSelect(index)"
+                @click="toggleSelect(index)"
                 :class="[
-                  'break-inside-avoid mb-2 group relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-sm hover:shadow-md transition-all duration-200',
-                  isBatchMode ? 'cursor-pointer' : '',
+                  'break-inside-avoid mb-2 group relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer',
                   selectedItems.has(index) ? 'ring-2 ring-blue-500 ring-offset-1' : ''
                 ]">
                 <img :src="item.url" :alt="getFileName(item.url)" 
                   class="w-full h-auto object-cover"
                   loading="lazy"
                   @error="imageLoadStatus.set(item.url, false)"
-                  @load="imageLoadStatus.set(item.url, true)" />
-                <div v-if="isBatchMode && selectedItems.has(index)" class="absolute top-2 left-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                  @load="onImageLoad($event, item.url)" />
+                <div v-if="selectedItems.has(index)" class="absolute top-2 left-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
                   <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <div v-if="isBatchMode && !selectedItems.has(index)" class="absolute top-2 left-2 w-5 h-5 bg-white/80 dark:bg-gray-800/80 rounded-full border-2 border-gray-300 dark:border-gray-600">
+                <div v-if="!selectedItems.has(index)" class="absolute top-2 left-2 w-5 h-5 bg-white/80 dark:bg-gray-800/80 rounded-full border-2 border-gray-300 dark:border-gray-600">
                 </div>
                 <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                   <div class="absolute bottom-0 left-0 right-0 p-2">
@@ -720,68 +903,91 @@
                   </div>
                 </div>
                 <div class="px-2 py-1.5 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700">
-                  <div class="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400">
-                    <span :class="getFormatColor(item.format)" class="px-1 py-0.5 rounded font-medium">
+                  <div class="flex items-center justify-end gap-1.5 text-xs">
+                    <span :class="getFormatColor(item.format)" class="px-1.5 py-0.5 rounded font-medium">
                       {{ getFormatLabel(item.format) }}
                     </span>
-                    <span v-if="item.size">{{ formatFileSize(item.size) }}</span>
-                  </div>
-                  <div v-if="item.width && item.height" class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                    {{ item.width }} × {{ item.height }}
+                    <span v-if="item.size" :class="getSizeColor()" class="px-1.5 py-0.5 rounded font-medium">
+                      {{ formatFileSize(item.size) }}
+                    </span>
+                    <span v-if="item.width && item.height" :class="getResolutionColor(item.width, item.height)" class="px-1.5 py-0.5 rounded font-medium">
+                      {{ item.width }}×{{ item.height }}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <TransitionGroup
-              v-else
-              tag="ul"
-              class="divide-y divide-gray-200 dark:divide-gray-800"
-              enter-active-class="transition-all duration-300 ease-out"
-              enter-from-class="opacity-0 translate-y-2"
-              enter-to-class="opacity-100 translate-y-0"
-              leave-active-class="transition-all duration-200 ease-in"
-              leave-from-class="opacity-100"
-              leave-to-class="opacity-0"
-            >
-            <li v-for="(item, index) in filteredMediaList" :key="item.url + index"
-              :class="['transition-colors duration-150', selectedItems.has(index) ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60']">
-              <div class="px-2 py-2 flex items-center justify-between gap-1.5">
-                <div class="flex items-center gap-1.5 min-w-0 flex-1">
-                  <button v-if="isBatchMode" @click.stop="toggleSelect(index)" class="flex-shrink-0 p-0.5">
-                    <svg class="w-4 h-4" :class="selectedItems.has(index) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300 dark:text-gray-600'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path v-if="selectedItems.has(index)" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </button>
-                  <div @click="!isBatchMode && toggleExpand(index)" class="flex-1 min-w-0 flex items-center gap-1.5 cursor-pointer">
-                    <svg v-if="!isBatchMode" class="w-3.5 h-3.5 text-gray-400 transition-transform duration-200 flex-shrink-0"
-                      :class="{ 'rotate-90': expandedId === index }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                    <p class="font-medium text-sm truncate">{{ getFileName(item.url) }}</p>
-                    <span v-if="item.size" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ formatFileSize(item.size) }}</span>
+            <div v-else class="p-2 flex flex-col gap-2">
+              <div v-for="(item, index) in filteredMediaList" :key="item.url + index"
+                @click="toggleSelect(index)"
+                :class="[
+                  'group relative rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm hover:shadow-lg hover:ring-2 hover:ring-blue-200 dark:hover:ring-blue-800 transition-all duration-200 cursor-pointer border',
+                  selectedItems.has(index) ? 'ring-2 ring-blue-400 dark:ring-blue-500 border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'
+                ]">
+                <div class="p-3 flex items-center gap-3">
+                  <div class="flex-shrink-0">
+                    <div :class="[
+                      'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200',
+                      selectedItems.has(index) 
+                        ? 'border-blue-500 bg-blue-500' 
+                        : 'border-gray-300 dark:border-gray-600 group-hover:border-blue-400'
+                    ]">
+                      <svg v-if="selectedItems.has(index)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
                   </div>
-                </div>
-                <div class="flex items-center gap-1 flex-shrink-0" @click.stop>
-                  <span :class="getFormatColor(item.format)" class="px-1 py-0.5 rounded text-xs font-medium">
-                    {{ getFormatLabel(item.format) }}
-                  </span>
-                  <div class="flex gap-0.5">
+                  <div class="flex-1 min-w-0">
+                    <p class="font-medium text-sm truncate mb-1.5" :title="getFileName(item.url)">{{ getFileName(item.url) }}</p>
+                    <div class="flex items-center gap-1.5 text-xs">
+                      <span :class="getFormatColor(item.format)" class="px-1.5 py-0.5 rounded font-medium">
+                        {{ getFormatLabel(item.format) }}
+                      </span>
+                      <template v-if="isVideoFormat(item.format)">
+                        <span v-if="getResolutionLabel(item.width, item.height)" :class="getResolutionColor(item.width, item.height)" class="px-1.5 py-0.5 rounded font-medium">
+                          {{ getResolutionLabel(item.width, item.height) }}
+                        </span>
+                        <span v-if="item.duration" class="px-1.5 py-0.5 rounded font-medium bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">
+                          {{ formatDuration(item.duration) }}
+                        </span>
+                        <span v-if="item.size" :class="getSizeColor()" class="px-1.5 py-0.5 rounded font-medium">
+                          {{ formatFileSize(item.size) }}
+                        </span>
+                      </template>
+                      <template v-else-if="isAudioFormat(item.format)">
+                        <span v-if="item.size" :class="getSizeColor()" class="px-1.5 py-0.5 rounded font-medium">
+                          {{ formatFileSize(item.size) }}
+                        </span>
+                        <span v-if="item.duration" class="px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                          {{ formatDuration(item.duration) }}
+                        </span>
+                      </template>
+                      <template v-else>
+                        <span v-if="item.size" :class="getSizeColor()" class="px-1.5 py-0.5 rounded font-medium">
+                          {{ formatFileSize(item.size) }}
+                        </span>
+                        <span v-if="item.width && item.height && isImageFormat(item.format)" :class="getResolutionColor(item.width, item.height)" class="px-1.5 py-0.5 rounded font-medium">
+                          {{ item.width }}×{{ item.height }}
+                        </span>
+                      </template>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 flex-shrink-0" @click.stop>
                     <button @click="copyUrl(item.url)"
-                      class="p-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 active:scale-90 transition-all duration-150"
+                      class="p-1.5 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 transition-all duration-150"
                       :title="browser.i18n.getMessage('copyUrl')">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg class="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
                     </button>
                     <button @click="playUrl(item.url, index, item.format)"
-                      class="p-1 rounded transition-all duration-150 active:scale-90"
-                      :class="(isStreamFormat(item.format) && playingId === index) || (isImageFormat(item.format) && previewingId === index) || (isAudioFormat(item.format) && audioPlayingId === index) ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'"
-                      :title="(isStreamFormat(item.format) && playingId === index) || (isImageFormat(item.format) && previewingId === index) || (isAudioFormat(item.format) && audioPlayingId === index) ? browser.i18n.getMessage('stopPlay') : browser.i18n.getMessage('play')">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <template v-if="(isStreamFormat(item.format) && playingId === index) || (isImageFormat(item.format) && previewingId === index) || (isAudioFormat(item.format) && audioPlayingId === index)">
+                      class="p-1.5 rounded transition-all duration-150 active:scale-90"
+                      :class="(isStreamFormat(item.format) && playingId === index) || (isAudioFormat(item.format) && audioPlayingId === index) ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'"
+                      :title="(isStreamFormat(item.format) && playingId === index) || (isAudioFormat(item.format) && audioPlayingId === index) ? browser.i18n.getMessage('stopPlay') : browser.i18n.getMessage('play')">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <template v-if="(isStreamFormat(item.format) && playingId === index) || (isAudioFormat(item.format) && audioPlayingId === index)">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6" />
                         </template>
@@ -798,52 +1004,22 @@
                       </svg>
                     </button>
                     <button @click="downloadUrl(item.url, item.format)"
-                      class="p-1 rounded bg-blue-600 hover:bg-blue-500 active:scale-90 text-white transition-all duration-150"
+                      class="p-1.5 rounded bg-green-600 hover:bg-green-500 active:scale-90 text-white transition-all duration-150"
                       :title="browser.i18n.getMessage('download')">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
                     </button>
                   </div>
                 </div>
-              </div>
-              <Transition
-                enter-active-class="transition-all duration-250 ease-out"
-                enter-from-class="opacity-0 max-h-0"
-                enter-to-class="opacity-100 max-h-[400px]"
-                leave-active-class="transition-all duration-200 ease-in"
-                leave-from-class="opacity-100 max-h-[400px]"
-                leave-to-class="opacity-0 max-h-0"
-              >
-                <div v-if="expandedId === index" class="px-2 pb-2 pl-7 overflow-hidden">
-                  <p class="text-xs text-gray-500 dark:text-gray-400 break-all bg-gray-50 dark:bg-gray-800 p-2 rounded mb-3">
-                    {{ item.url }}
-                  </p>
-                  <div v-if="isStreamFormat(item.format) && playingId === index" class="mt-3">
-                    <div class="relative bg-black rounded-lg overflow-hidden">
-                      <video :id="'video-player-' + index" class="w-full h-auto max-h-[300px]" controls playsinline>
-                        {{ browser.i18n.getMessage('unplayable') }}
-                      </video>
-                      <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-                        <span class="text-xs text-white/80 font-medium">{{ getFileName(item.url) }}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="isImageFormat(item.format) && previewingId === index" class="mt-3">
-                    <div class="relative bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-                      <img :src="item.url" :alt="getFileName(item.url)" class="w-full h-auto max-h-[300px] object-contain" />
-                    </div>
-                  </div>
-                  <div v-if="isAudioFormat(item.format) && audioPlayingId === index" class="mt-3">
-                    <div class="bg-gray-900 dark:bg-gray-950 rounded-lg overflow-hidden p-3 flex flex-col gap-3">
-                      <canvas :id="'spectrum-' + index" width="auto" height="80" class="w-full rounded" />
-                      <audio :id="'audio-player-' + index" :src="item.url" class="w-full h-8" controls crossorigin="anonymous" />
-                    </div>
+                <div v-if="isAudioFormat(item.format) && audioPlayingId === index" class="px-3 pb-3 pt-0">
+                  <div class="bg-gray-900 dark:bg-gray-950 rounded-lg overflow-hidden p-2 flex flex-col gap-2">
+                    <canvas :id="'spectrum-' + index" width="300" height="60" class="w-full rounded" />
+                    <audio :id="'audio-player-' + index" :src="item.url" class="w-full h-8" controls crossorigin="anonymous" />
                   </div>
                 </div>
-              </Transition>
-            </li>
-          </TransitionGroup>
+              </div>
+            </div>
         </template>
         </main>
 
@@ -872,14 +1048,8 @@
           </Transition>
         </Teleport>
 
-        <footer class="px-2 py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs relative shrink-0 bg-white dark:bg-gray-900">
+        <footer class="px-3 py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs relative shrink-0 bg-white dark:bg-gray-900">
           <div class="flex items-center gap-1">
-            <button @click="toggleBatchMode" :class="['p-1.5 rounded transition-colors', isBatchMode ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' : 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800']" :title="isBatchMode ? '退出批量模式' : '批量下载'">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path v-if="isBatchMode" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-            </button>
             <button @click="openSettings"
               class="p-1.5 rounded text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               :title="browser.i18n.getMessage('settings')">

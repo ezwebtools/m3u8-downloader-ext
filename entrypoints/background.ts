@@ -1,6 +1,74 @@
 import { detectMediaFromUrl, detectMedia } from '../utils/detect'
 import { loadAllTabData, saveTabList, deleteTabList, type MediaEntry } from '../utils/storage'
 import { loadSettings, saveSettings, isFormatAllowed, isSizeAllowed, isDomainExcluded, type Settings } from '../utils/settings'
+import MediaInfoFactory from 'mediainfo.js'
+
+const mediaInfoCache = new Map<string, { width?: number; height?: number; duration?: number }>()
+
+async function fetchMediaInfo(url: string): Promise<{ width?: number; height?: number; duration?: number } | null> {
+  if (mediaInfoCache.has(url)) {
+    return mediaInfoCache.get(url)!
+  }
+  
+  try {
+    const mediaInfo = await MediaInfoFactory({
+      format: 'JSON',
+      locateFile: () => browser.runtime.getURL('MediaInfoModule.wasm')
+    })
+    
+    const getSize = async () => {
+      const response = await fetch(url, { method: 'HEAD' })
+      const contentLength = response.headers.get('Content-Length')
+      return contentLength ? parseInt(contentLength, 10) : 0
+    }
+    
+    const readChunk = async (chunkSize: number, offset: number): Promise<Uint8Array> => {
+      const response = await fetch(url, {
+        headers: { Range: `bytes=${offset}-${offset + chunkSize - 1}` }
+      })
+      const buffer = await response.arrayBuffer()
+      return new Uint8Array(buffer)
+    }
+    
+    const result = await mediaInfo.analyzeData(getSize, readChunk)
+    mediaInfo.close()
+    
+    if (result) {
+      const parsed = JSON.parse(result)
+      const info: { width?: number; height?: number; duration?: number } = {}
+      
+      const videoTrack = parsed.media?.track?.find((t: any) => t['@type'] === 'Video')
+      if (videoTrack) {
+        info.width = parseInt(videoTrack.Width, 10)
+        info.height = parseInt(videoTrack.Height, 10)
+      }
+      
+      const audioTrack = parsed.media?.track?.find((t: any) => t['@type'] === 'Audio')
+      const generalTrack = parsed.media?.track?.find((t: any) => t['@type'] === 'General')
+      
+      const durationStr = audioTrack?.Duration || generalTrack?.Duration
+      if (durationStr) {
+        info.duration = parseFloat(durationStr)
+      }
+      
+      if (info.width || info.height || info.duration) {
+        mediaInfoCache.set(url, info)
+        return info
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to fetch media info:', e)
+  }
+  return null
+}
+
+async function fetchVideoDimensions(url: string): Promise<{ width: number; height: number } | null> {
+  const info = await fetchMediaInfo(url)
+  if (info?.width && info?.height) {
+    return { width: info.width, height: info.height }
+  }
+  return null
+}
 
 // 语言映射配置
 const LANGUAGE_MAP: Record<string, string> = {
@@ -257,6 +325,30 @@ export default defineBackground(() => {
 
     if (msg.type === 'GET_CURRENT_TAB') {
       return Promise.resolve(sender.tab)
+    }
+
+    if (msg.type === 'GET_VIDEO_DIMENSIONS') {
+      const url = msg.url as string
+      fetchVideoDimensions(url).then(dimensions => {
+        sendResponse(dimensions)
+      })
+      return true
+    }
+
+    if (msg.type === 'GET_AUDIO_DURATION') {
+      const url = msg.url as string
+      fetchMediaInfo(url).then(info => {
+        sendResponse(info?.duration ? { duration: info.duration } : null)
+      })
+      return true
+    }
+
+    if (msg.type === 'GET_MEDIA_INFO') {
+      const url = msg.url as string
+      fetchMediaInfo(url).then(info => {
+        sendResponse(info)
+      })
+      return true
     }
 
     if (msg.type === 'GET_SETTINGS') {

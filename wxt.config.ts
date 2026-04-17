@@ -13,7 +13,7 @@ export default defineConfig({
     host_permissions: ['<all_urls>'],
     web_accessible_resources: [
       {
-        resources: ['/injected.js'],
+        resources: ['/injected.js', '/MediaInfoModule.wasm'],
         matches: ['<all_urls>'],
       },
     ],
