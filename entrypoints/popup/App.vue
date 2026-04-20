@@ -1012,6 +1012,11 @@
                     </button>
                   </div>
                 </div>
+                <div v-if="isStreamFormat(item.format) && playingId === index" class="px-3 pb-3 pt-0">
+                  <div class="bg-gray-900 dark:bg-gray-950 rounded-lg overflow-hidden">
+                    <video :id="'video-player-' + index" class="w-full max-h-64" controls />
+                  </div>
+                </div>
                 <div v-if="isAudioFormat(item.format) && audioPlayingId === index" class="px-3 pb-3 pt-0">
                   <div class="bg-gray-900 dark:bg-gray-950 rounded-lg overflow-hidden p-2 flex flex-col gap-2">
                     <canvas :id="'spectrum-' + index" width="300" height="60" class="w-full rounded" />
