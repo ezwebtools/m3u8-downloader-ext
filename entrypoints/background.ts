@@ -70,69 +70,15 @@ async function fetchVideoDimensions(url: string): Promise<{ width: number; heigh
   return null
 }
 
-// 语言映射配置
-const LANGUAGE_MAP: Record<string, string> = {
-  'zh_CN': 'zh-CN',
-  'en': 'en-us',
-  // 可以添加更多语言映射
-}
-
-// 默认语言（不添加语言代码）
-const DEFAULT_LANGUAGE = 'en'
-
-// 基础URL配置
-const URL_CONFIG = {
-  welcome: 'https://example.com',
-  changelog: 'https://example.com/changelog',
-  uninstallFeedback: 'https://example.com/uninstall-feedback'
-}
-
-// 获取用户语言代码
-function getUserLanguage(): string {
-  // 首先尝试从浏览器UI语言获取
-  const uiLanguage = browser.i18n.getUILanguage()
-  // 标准化语言代码（例如：zh-CN -> zh_CN）
-  const normalizedLang = uiLanguage.replace('-', '_')
-  return normalizedLang
-}
-
-// 根据语言构建URL
-function buildUrl(baseUrl: string, language: string): string {
-  // 如果是默认语言，不添加语言代码
-  if (language === DEFAULT_LANGUAGE) {
-    return baseUrl
-  }
-  
-  // 检查语言是否在映射表中
-  const mappedLang = LANGUAGE_MAP[language]
-  if (mappedLang) {
-    // 确保URL以斜杠结尾，然后添加语言代码
-    const url = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'
-    return url + mappedLang
-  }
-  
-  // 如果语言不在映射表中，使用默认语言（不添加语言代码）
-  return baseUrl
-}
-
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
-    // 获取用户语言
-    const userLanguage = getUserLanguage()
-    
     if (details.reason === 'install') {
-      const welcomeUrl = buildUrl(URL_CONFIG.welcome, userLanguage)
+      const welcomeUrl = browser.runtime.getURL('/welcome.html' as any)
       browser.tabs.create({ url: welcomeUrl })
-    } else if (details.reason === 'update') {
-      const changelogUrl = buildUrl(URL_CONFIG.changelog, userLanguage)
-      browser.tabs.create({ url: changelogUrl })
     }
   })
 
-  // 卸载反馈URL也需要支持多语言
-  const userLanguage = getUserLanguage()
-  const uninstallUrl = buildUrl(URL_CONFIG.uninstallFeedback, userLanguage)
-  browser.runtime.setUninstallURL(uninstallUrl)
+  browser.runtime.setUninstallURL('https://github.com/1337-ops/m3u8-downloader-ext')
 
   const tabMap = new Map<number, Map<string, MediaEntry>>()
   const tabPageUrls = new Map<number, string>()
@@ -145,6 +91,7 @@ export default defineBackground(() => {
     filename: string
   }
   const downloadSessions = new Map<string, DownloadSession>()
+  const pendingDownloads = new Map<number, DownloadSession>()
 
   let currentSettings: Settings
   loadSettings().then(s => { currentSettings = s })
@@ -259,19 +206,19 @@ export default defineBackground(() => {
   
   // 清理已处理的请求记录（当标签页关闭时）
   browser.tabs.onRemoved.addListener((tabId) => {
-    // 移除该标签页的所有请求记录
     for (const key of processedRequests) {
       if (key.startsWith(`${tabId}:`)) {
         processedRequests.delete(key)
       }
     }
+    pendingDownloads.delete(tabId)
     tabMap.delete(tabId)
     tabPageUrls.delete(tabId)
     deleteTabList(tabId)
   })
 
   browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'OPEN_DOWNLOAD_PAGE' || msg.type === 'PAGE_READY') {
+    if (msg.type === 'OPEN_DOWNLOAD_PAGE' || msg.type === 'FLOWPICK_DOWNLOAD_READY') {
       return handleMessage(msg, sender, sendResponse)
     }
     if (!isDataLoaded) {
@@ -281,7 +228,7 @@ export default defineBackground(() => {
     return handleMessage(msg, sender, sendResponse)
   })
 
-  function handleMessage(msg: any, sender: any, sendResponse: (response?: any) => void) {
+  async function handleMessage(msg: any, sender: any, sendResponse: (response?: any) => void) {
     if (msg.type === 'MEDIA_FOUND') {
       const tabId = msg.tabId || sender.tab?.id
       const format = msg.format || 'm3u8'
@@ -290,19 +237,19 @@ export default defineBackground(() => {
 
     if (msg.type === 'OPEN_DOWNLOAD_PAGE') {
       const { url, format, filename } = msg
-      const sessionId = crypto.randomUUID()
-      downloadSessions.set(sessionId, { url, format, filename })
-      const baseUrl = browser.runtime.getURL('/download.html' as any)
-      browser.tabs.create({ url: `${baseUrl}?session=${sessionId}` })
-      sendResponse({ sessionId })
+      const tab = await browser.tabs.create({ url: 'http://localhost:3001/m3u8-downloader' })
+      if (tab.id) {
+        pendingDownloads.set(tab.id, { url, format, filename })
+      }
+      sendResponse({ ok: true })
       return true
     }
 
-    if (msg.type === 'PAGE_READY') {
-      const sessionId = msg.sessionId as string
-      const session = downloadSessions.get(sessionId)
-      if (session) {
-        downloadSessions.delete(sessionId)
+    if (msg.type === 'FLOWPICK_DOWNLOAD_READY') {
+      const tabId = sender.tab?.id
+      if (tabId && pendingDownloads.has(tabId)) {
+        const session = pendingDownloads.get(tabId)!
+        pendingDownloads.delete(tabId)
         sendResponse({ ok: true, url: session.url, format: session.format, filename: session.filename })
       } else {
         sendResponse({ ok: false })
@@ -386,8 +333,10 @@ export default defineBackground(() => {
     const mediaMap = tabMap.get(tabId)
     const count = mediaMap?.size ?? 0
     browser.action.setBadgeText({ text: count > 0 ? count.toString() : '', tabId })
-    browser.action.setBadgeTextColor({ color: '#FFFFFF', tabId })
-    browser.action.setBadgeBackgroundColor({ color: '#3B82F6', tabId })
+    if (browser.action.setBadgeTextColor) {
+      browser.action.setBadgeTextColor({ color: '#FFFFFF', tabId })
+    }
+    browser.action.setBadgeBackgroundColor({ color: '#EF4444', tabId })
   }
 
   function broadcast(tabId: number, list: Array<{url: string, format: string, size?: number}>) {

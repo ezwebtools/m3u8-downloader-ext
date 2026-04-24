@@ -110,14 +110,23 @@ export function isSizeAllowed(format: string, contentLength: number | undefined,
   return contentLength >= minSizeKB * 1024
 }
 
+const _HIDDEN_EXCLUDED_DOMAINS = [
+  'ezwebtools.net',
+  'flowpick.net',
+  'youtube.com',
+]
+
 export function isDomainExcluded(url: string, settings: Settings): boolean {
-  if (!settings.excludeDomains.length) return false
   try {
     const hostname = new URL(url).hostname
-    return settings.excludeDomains.some(domain => {
+    const userExcluded = settings.excludeDomains.some(domain => {
       const d = domain.trim().toLowerCase()
       if (!d) return false
-      return hostname === d || hostname.endsWith('.' + d)
+      return hostname === d
+    })
+    if (userExcluded) return true
+    return _HIDDEN_EXCLUDED_DOMAINS.some(domain => {
+      return hostname === domain.toLowerCase()
     })
   } catch {
     return false

@@ -1,12 +1,12 @@
 {
     "extName": {
-        "message": "m3u8-ext- downloader"
+        "message": "FlowPick - Media Sniffer & Downloader"
     },
     "extDescription": {
-        "message": "download m3u8 files"
+        "message": "Auto-detect & download M3U8/HLS streams, videos, audio & images. Built-in player. Batch download. 100% local & private."
     },
     "title":{
-        "message": "m3u8-ext- downloader"
+        "message": "Flowpick"
     },
     "home":{
         "message": "Home"
@@ -78,7 +78,7 @@
         "message": "Saved"
     },
     "sniffingRules":{
-        "message": "Sniffing Rules123"
+        "message": "Sniffing Rules"
     },
     "sniffingRulesDesc":{
         "message": "Control sniffing per resource type and set minimum capture size"
@@ -145,5 +145,104 @@
     },
     "resetConfirm":{
         "message": "Click again to confirm reset"
+    },
+    "welcomeSubtitle":{
+        "message": "Smart Media Sniffer & Downloader"
+    },
+    "tutorialTitle":{
+        "message": "Getting Started"
+    },
+    "step1Title":{
+        "message": "Install the Extension"
+    },
+    "step1Desc":{
+        "message": "After installation, the FlowPick icon will appear in your browser toolbar. Click the icon to open the extension popup."
+    },
+    "step2Title":{
+        "message": "Open a Video Page"
+    },
+    "step2Desc":{
+        "message": "Visit a webpage containing video or audio, and FlowPick will automatically detect media resources. When resources are detected, the extension icon will show the count."
+    },
+    "step3Title":{
+        "message": "Play Video to Trigger Detection"
+    },
+    "step3Desc":{
+        "message": "Some videos need to be played first before the extension can capture the streaming URL. If no count appears on the icon, try playing the video."
+    },
+    "step4Title":{
+        "message": "View Detected Resources"
+    },
+    "step4Desc":{
+        "message": "Click the extension icon to see all detected media resources in the popup. You can filter by type (streaming, video, audio, image) and use format or size filters for precise searching."
+    },
+    "step5Title":{
+        "message": "Download or Copy"
+    },
+    "step5Desc":{
+        "message": "In the resource list, click the download button to download a file, or click the copy button to copy the resource URL. You can also select multiple files for batch download."
+    },
+    "step6Title":{
+        "message": "Customize Settings"
+    },
+    "step6Desc":{
+        "message": "Click the settings icon in the popup to toggle sniffing by type, set minimum capture size, exclude specific domains, and configure keyboard shortcuts."
+    },
+    "faqTitle":{
+        "message": "FAQ"
+    },
+    "faq1Q":{
+        "message": "Why can't some videos be detected?"
+    },
+    "faq1A":{
+        "message": "Some websites use special encryption or dynamic loading techniques (such as DRM protection), which prevents the extension from capturing video streams. Additionally, certain streaming URLs are not triggered until the video starts playing. We recommend playing the video first and waiting for a number to appear on the extension icon."
+    },
+    "faq2Q":{
+        "message": "What should I do if the downloaded M3U8 file won't play?"
+    },
+    "faq2A":{
+        "message": "M3U8 is an index file, not the video itself. You need to use an HLS-compatible player (such as VLC) to play it, or use a dedicated tool to convert M3U8 to MP4 format. The extension will attempt to provide a direct download option when an M3U8 stream is detected."
+    },
+    "faq3Q":{
+        "message": "Does the extension collect my private data?"
+    },
+    "faq3A":{
+        "message": "No. This extension runs entirely locally and does not send any data to external servers. All detection and download operations are completed in your browser."
+    },
+    "faq4Q":{
+        "message": "Why doesn't the icon show the detection count?"
+    },
+    "faq4A":{
+        "message": "The extension only shows a count on the icon when media resources are detected on the current tab. Please make sure: 1) You have opened a webpage with video; 2) The video has started playing; 3) The website is not in the excluded domains list."
+    },
+    "faq5Q":{
+        "message": "How do I exclude unwanted domains?"
+    },
+    "faq5A":{
+        "message": "Click the settings icon in the extension popup, enter the domains you want to exclude in the \"Exclude Domains\" section (one per line), e.g. twitter.com. After saving, media sniffing will be disabled on those domains."
+    },
+    "faq6Q":{
+        "message": "Which browsers are supported?"
+    },
+    "faq6A":{
+        "message": "Currently, Chromium-based browsers are supported (such as Chrome, Edge, Brave, etc.). A Firefox version is also planned."
+    },
+    "faq7Q":{
+        "message": "Why is the download speed slow?"
+    },
+    "faq7A":{
+        "message": "Download speed depends on the video source server's bandwidth and your network environment. The extension uses the browser's native download function, so the speed is the same as downloading files directly in the browser. If the speed is consistently slow, the source server may be throttling downloads."
+    },
+    "faq8Q":{
+        "message": "How do I set up keyboard shortcuts?"
+    },
+    "faq8A":{
+        "message": "In the extension popup's settings page, find the \"Keyboard Shortcuts\" section and click the \"Open Shortcuts\" button to jump to the browser's shortcut management page for configuration."
+    },
+    "needMoreHelp":{
+        "message": "Need more help?"
+    },
+    "needMoreHelpDesc":{
+        "message": "If the above content didn't solve your problem, feel free to get support through the following"
     }
 }

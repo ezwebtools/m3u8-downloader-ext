@@ -45,8 +45,12 @@
     saveTimer = setTimeout(() => { saved.value = false }, 2000)
   }
 
-  function openShortcuts() {
-    browser.tabs.create({ url: 'chrome://extensions/shortcuts' })
+  async function openShortcuts() {
+    if (typeof browser.commands?.openShortcutSettings === 'function') {
+      browser.commands.openShortcutSettings()
+    } else {
+      browser.tabs.create({ url: 'chrome://extensions/shortcuts' })
+    }
   }
 
   onUnmounted(() => {
@@ -67,7 +71,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </div>
-          <h1 class="text-xl font-semibold">Settings</h1>
+          <h1 class="text-xl font-semibold">{{ t('optionsTitle') }}</h1>
         </div>
 
         <Transition
@@ -83,7 +87,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
             </svg>
-            Saved
+            {{ t('saved') }}
           </div>
         </Transition>
       </div>
@@ -93,14 +97,14 @@
         <!-- Sniffing Rules -->
         <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">{{ browser.i18n.getMessage('sniffingRules') }}</h2>
+            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">{{ t('sniffingRules') }}</h2>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('sniffingRulesDesc') }}</p>
           </div>
           <!-- 表头 -->
           <div class="grid grid-cols-[1fr_auto_160px] items-center px-5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
-            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Type</span>
-            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center pr-6">Sniff</span>
-            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Min Size (KB)</span>
+            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{{ t('type') }}</span>
+            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center pr-6">{{ t('sniff') }}</span>
+            <span class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{{ t('minSizeKB') }}</span>
           </div>
           <!-- 数据行 -->
           <div class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -109,8 +113,8 @@
               <div class="flex items-center gap-2.5 min-w-0">
                 <span class="text-lg leading-none select-none">{{ row.icon }}</span>
                 <div>
-                  <p class="text-sm text-gray-800 dark:text-gray-200 font-medium">{{ row.label }}</p>
-                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ row.hint }}</p>
+                  <p class="text-sm text-gray-800 dark:text-gray-200 font-medium">{{ t(row.labelKey) }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ t(row.hintKey) }}</p>
                 </div>
               </div>
               <div class="flex justify-center pr-6">
@@ -132,7 +136,7 @@
                   :disabled="!settings.sniffingRules[row.key].enabled"
                   class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-35 disabled:cursor-not-allowed transition-opacity duration-150"
                 />
-                <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">KB</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ t('kb') }}</span>
               </div>
             </div>
           </div>
@@ -141,15 +145,15 @@
         <!-- Exclude Domains -->
         <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">Exclude Domains</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Sniffing will be disabled on these domains. One per line (e.g. twitter.com)</p>
+            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">{{ t('excludeDomains') }}</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('excludeDomainsDesc') }}</p>
           </div>
           <div class="px-5 py-4">
             <textarea
               v-model="excludeDomainsText"
               @blur="triggerSave"
               rows="4"
-              placeholder="twitter.com&#10;facebook.com&#10;instagram.com"
+              :placeholder="t('excludeDomainsPlaceholder')"
               class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono"
             />
           </div>
@@ -158,8 +162,8 @@
         <!-- Keyboard Shortcuts -->
         <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Configure shortcuts to open the extension panel</p>
+            <h2 class="font-medium text-sm text-gray-900 dark:text-gray-100">{{ t('keyboardShortcuts') }}</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('keyboardShortcutsDesc') }}</p>
           </div>
           <div class="px-5 py-4 flex items-center justify-between">
             <div class="text-sm text-gray-600 dark:text-gray-400">

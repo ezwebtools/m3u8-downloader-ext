@@ -431,6 +431,8 @@
     if (audioPlayingId.value === index) audioPlayingId.value = null
   }
 
+  const supportsRoundRect = typeof CanvasRenderingContext2D !== 'undefined' && typeof CanvasRenderingContext2D.prototype.roundRect === 'function'
+
   const drawSpectrum = (index: number, analyser: AnalyserNode) => {
     const canvas = document.getElementById(`spectrum-${index}`) as HTMLCanvasElement | null
     if (!canvas) return
@@ -472,11 +474,17 @@
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.8
       const source = audioCtx.createMediaElementSource(audioEl)
-      source.connect(analyser)
-      analyser.connect(audioCtx.destination)
-      audioPlayers.set(index, { audioCtx, analyser, source, animFrameId: 0 })
-      audioEl.play().catch(() => {})
-      drawSpectrum(index, analyser)
+      if (supportsRoundRect) {
+        source.connect(analyser)
+        analyser.connect(audioCtx.destination)
+        audioPlayers.set(index, { audioCtx, analyser, source, animFrameId: 0 })
+        audioEl.play().catch(() => {})
+        drawSpectrum(index, analyser)
+      } else {
+        source.connect(audioCtx.destination)
+        audioPlayers.set(index, { audioCtx, analyser, source, animFrameId: 0 })
+        audioEl.play().catch(() => {})
+      }
     } catch {
       showToastMsg(browser.i18n.getMessage('audioPlayError'))
     }
@@ -668,8 +676,12 @@
     textSaveTimer = setTimeout(() => { triggerSave() }, 600)
   }
 
-  function openShortcuts() {
-    browser.tabs.create({ url: 'chrome://extensions/shortcuts' })
+  async function openShortcuts() {
+    if (typeof browser.commands?.openShortcutSettings === 'function') {
+      browser.commands.openShortcutSettings()
+    } else {
+      browser.tabs.create({ url: 'chrome://extensions/shortcuts' })
+    }
   }
 
   function handleResetClick() {
