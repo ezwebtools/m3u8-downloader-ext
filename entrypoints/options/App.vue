@@ -14,7 +14,7 @@
   const excludeDomainsText = ref('')
   let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-  const t = (key: string) => browser.i18n.getMessage(key)
+  const t = (key: string) => browser.i18n.getMessage(key as any)
 
   const SNIFFING_ROWS: { key: SniffingGroup; labelKey: string; icon: string; hintKey: string }[] = [
     { key: 'streaming', labelKey: 'streaming', icon: '📡', hintKey: 'streamingHint' },
@@ -46,10 +46,14 @@
   }
 
   async function openShortcuts() {
-    if (typeof browser.commands?.openShortcutSettings === 'function') {
-      browser.commands.openShortcutSettings()
+    if (typeof (browser.commands as any)?.openShortcutSettings === 'function') {
+      ;(browser.commands as any).openShortcutSettings()
     } else {
-      browser.tabs.create({ url: 'chrome://extensions/shortcuts' })
+      const isFirefox = navigator.userAgent.includes('Firefox')
+      const url = isFirefox
+        ? 'about:addons'
+        : 'chrome://extensions/shortcuts'
+      browser.tabs.create({ url })
     }
   }
 

@@ -54,10 +54,10 @@
         "message": "再生"
     },
     "notFound":{
-        "message": "ストリーミングメディアは検出されませんでした"
+        "message": "メディアリソースは検出されませんでした"
     },
     "playTips":{
-        "message": "動画を検出するには、再生を開始する必要がある場合があります。"
+        "message": "動画や音声を再生、または画像を読み込むとメディアリソースを検出できます。"
     },
     "unplayable":{
         "message": "お使いのブラウザは動画再生に対応していません。"
@@ -244,5 +244,65 @@
     },
     "needMoreHelpDesc":{
         "message": "上記の内容で問題が解決しない場合は、以下からサポートをご利用ください"
+    },
+    "subtitle":{
+        "message": "スマートスニッフィング、ワンクリックダウンロード"
+    },
+    "tabAll":{
+        "message": "すべて"
+    },
+    "tabStream":{
+        "message": "ストリーム"
+    },
+    "selectAll":{
+        "message": "すべて選択"
+    },
+    "deselectAll":{
+        "message": "選択解除"
+    },
+    "downloadSelected":{
+        "message": "選択をダウンロード"
+    },
+    "filter":{
+        "message": "フィルター"
+    },
+    "filterType":{
+        "message": "タイプ"
+    },
+    "any":{
+        "message": "すべて"
+    },
+    "filterSize":{
+        "message": "サイズ"
+    },
+    "min":{
+        "message": "最小"
+    },
+    "max":{
+        "message": "最大"
+    },
+    "filterDimension":{
+        "message": "寸法"
+    },
+    "width":{
+        "message": "幅"
+    },
+    "height":{
+        "message": "高さ"
+    },
+    "filterResolution":{
+        "message": "解像度"
+    },
+    "reset":{
+        "message": "リセット"
+    },
+    "preview":{
+        "message": "プレビュー"
+    },
+    "batchDownloadStarted":{
+        "message": "$1 ファイルのダウンロードを開始しました"
+    },
+    "open":{
+        "message": "開く"
     }
 }

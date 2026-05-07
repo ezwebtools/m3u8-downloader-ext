@@ -9,8 +9,42 @@ function tabKey(tabId: number) {
   return `${PREFIX}${tabId}`
 }
 
+const useSessionStorage = typeof browser !== 'undefined' && !!browser.storage?.session
+
+async function getSessionData(): Promise<Record<string, any>> {
+  if (useSessionStorage) {
+    return await browser.storage.session.get(null)
+  }
+  const result = await browser.storage.local.get('__session__')
+  return (result['__session__'] as Record<string, any>) || {}
+}
+
+async function setSessionData(data: Record<string, any>): Promise<void> {
+  if (useSessionStorage) {
+    await browser.storage.session.set(data)
+  } else {
+    const existing = await browser.storage.local.get('__session__')
+    const merged = { ...(existing['__session__'] as Record<string, any> || {}), ...data }
+    await browser.storage.local.set({ '__session__': merged })
+  }
+}
+
+async function removeSessionData(keys: string | string[]): Promise<void> {
+  if (useSessionStorage) {
+    await browser.storage.session.remove(keys)
+  } else {
+    const existing = await browser.storage.local.get('__session__')
+    const data = existing['__session__'] as Record<string, any> || {}
+    const keyArr = Array.isArray(keys) ? keys : [keys]
+    for (const k of keyArr) {
+      delete data[k]
+    }
+    await browser.storage.local.set({ '__session__': data })
+  }
+}
+
 export async function loadAllTabData(): Promise<Map<number, Map<string, MediaEntry>>> {
-  const all = await browser.storage.session.get(null)
+  const all = await getSessionData()
   const map = new Map<number, Map<string, MediaEntry>>()
   for (const [key, value] of Object.entries(all)) {
     if (key.startsWith(PREFIX)) {
@@ -46,9 +80,9 @@ export async function saveTabList(tabId: number, mediaMap: Map<string, MediaEntr
   mediaMap.forEach((entry, url) => {
     obj[url] = entry
   })
-  await browser.storage.session.set({ [tabKey(tabId)]: obj })
+  await setSessionData({ [tabKey(tabId)]: obj })
 }
 
 export async function deleteTabList(tabId: number) {
-  await browser.storage.session.remove(tabKey(tabId))
+  await removeSessionData(tabKey(tabId))
 }

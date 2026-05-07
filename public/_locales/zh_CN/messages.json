@@ -54,10 +54,10 @@
         "message": "播放"
     },
     "notFound":{
-        "message": "未检测到任何视频流"
+        "message": "未检测到任何媒体资源"
     },
     "playTips":{
-        "message": "某些视频必须播放才能被检测到。"
+        "message": "播放视频或音频，或加载图片即可检测媒体资源。"
     },
     "unplayable":{
         "message": "您的浏览器不支持视频播放。"
@@ -244,5 +244,65 @@
     },
     "needMoreHelpDesc":{
         "message": "如果以上内容未能解决你的问题，欢迎通过以下方式获取支持"
+    },
+    "subtitle":{
+        "message": "智能嗅探，一键下载"
+    },
+    "tabAll":{
+        "message": "全部"
+    },
+    "tabStream":{
+        "message": "流媒体"
+    },
+    "selectAll":{
+        "message": "全选"
+    },
+    "deselectAll":{
+        "message": "取消全选"
+    },
+    "downloadSelected":{
+        "message": "下载所选"
+    },
+    "filter":{
+        "message": "过滤"
+    },
+    "filterType":{
+        "message": "类型"
+    },
+    "any":{
+        "message": "任意"
+    },
+    "filterSize":{
+        "message": "大小"
+    },
+    "min":{
+        "message": "最小"
+    },
+    "max":{
+        "message": "最大"
+    },
+    "filterDimension":{
+        "message": "尺寸"
+    },
+    "width":{
+        "message": "宽"
+    },
+    "height":{
+        "message": "高"
+    },
+    "filterResolution":{
+        "message": "分辨率"
+    },
+    "reset":{
+        "message": "重置"
+    },
+    "preview":{
+        "message": "预览"
+    },
+    "batchDownloadStarted":{
+        "message": "已开始下载 $1 个文件"
+    },
+    "open":{
+        "message": "打开"
     }
 }

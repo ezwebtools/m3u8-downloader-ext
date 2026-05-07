@@ -54,10 +54,10 @@
         "message": "Play"
     },
     "notFound":{
-        "message": "No streaming media detected"
+        "message": "No media detected"
     },
     "playTips":{
-        "message": "Some videos must start playing to be detected."
+        "message": "Play a video or audio, or load an image to detect media resources."
     },
     "unplayable":{
         "message": "Your browser does not support video playback."
@@ -244,5 +244,65 @@
     },
     "needMoreHelpDesc":{
         "message": "If the above content didn't solve your problem, feel free to get support through the following"
+    },
+    "subtitle":{
+        "message": "Smart Sniff, One-Click Download"
+    },
+    "tabAll":{
+        "message": "All"
+    },
+    "tabStream":{
+        "message": "Stream"
+    },
+    "selectAll":{
+        "message": "Select All"
+    },
+    "deselectAll":{
+        "message": "Deselect All"
+    },
+    "downloadSelected":{
+        "message": "Download Selected"
+    },
+    "filter":{
+        "message": "Filter"
+    },
+    "filterType":{
+        "message": "Type"
+    },
+    "any":{
+        "message": "Any"
+    },
+    "filterSize":{
+        "message": "Size"
+    },
+    "min":{
+        "message": "Min"
+    },
+    "max":{
+        "message": "Max"
+    },
+    "filterDimension":{
+        "message": "Dimensions"
+    },
+    "width":{
+        "message": "Width"
+    },
+    "height":{
+        "message": "Height"
+    },
+    "filterResolution":{
+        "message": "Resolution"
+    },
+    "reset":{
+        "message": "Reset"
+    },
+    "preview":{
+        "message": "Preview"
+    },
+    "batchDownloadStarted":{
+        "message": "Started downloading $1 file(s)"
+    },
+    "open":{
+        "message": "Open"
     }
 }

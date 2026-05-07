@@ -3,6 +3,15 @@
   import * as dashjs from 'dashjs'
   import { loadSettings, saveSettings, DEFAULT_SETTINGS, type Settings, type SniffingGroup } from '../../utils/settings'
 
+  const props = withDefaults(defineProps<{ mode?: 'popup' | 'sidepanel' }>(), { mode: 'popup' })
+
+  const rootContainerClass = computed(() => {
+    const base = 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col relative overflow-hidden'
+    return props.mode === 'sidepanel'
+      ? `w-full h-screen ${base}`
+      : `w-[500px] min-w-[500px] h-[600px] max-h-[600px] ${base}`
+  })
+
   type View = 'list' | 'settings'
 
   interface MediaItem {
@@ -96,10 +105,10 @@
   let resetConfirmTimer: ReturnType<typeof setTimeout> | null = null
   
   const SNIFFING_ROWS: { key: SniffingGroup; label: string; icon: string }[] = [
-    { key: 'streaming', label: 'Streaming (HLS/MPD)', icon: '📡' },
-    { key: 'video',     label: 'Video',     icon: '🎬' },
-    { key: 'audio',     label: 'Audio',     icon: '🎵' },
-    { key: 'image',     label: 'Image',     icon: '🖼️' },
+    { key: 'streaming', label: browser.i18n.getMessage('streaming'), icon: '📡' },
+    { key: 'video',     label: browser.i18n.getMessage('video'),     icon: '🎬' },
+    { key: 'audio',     label: browser.i18n.getMessage('audio'),     icon: '🎵' },
+    { key: 'image',     label: browser.i18n.getMessage('image'),     icon: '🖼️' },
   ]
 
   // ── Computed ─────────────────────────────────────────────────────
@@ -189,6 +198,21 @@
   })
 
   // ── Lifecycle ────────────────────────────────────────────────────
+  const loadMediaList = async () => {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true })
+    const newTabId = tabs[0]?.id
+    const newTabTitle = tabs[0]?.title || ''
+    if (newTabId === undefined) return
+    if (newTabId === currentTabId) return
+    currentTabId = newTabId
+    currentTabTitle = newTabTitle
+    const list = (await browser.runtime.sendMessage({ type: 'GET_LIST', tabId: currentTabId })) as Array<{url: string, format: string}> | undefined
+    mediaList.value = (list ?? []).map(itemToMediaItem)
+    listLoaded.value = true
+    fetchAllVideoDimensions()
+    fetchAllAudioDurations()
+  }
+
   onMounted(async () => {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true })
     currentTabId = tabs[0]?.id
@@ -205,10 +229,17 @@
 
     fetchAllVideoDimensions()
     fetchAllAudioDurations()
+
+    if (props.mode === 'sidepanel') {
+      browser.tabs.onActivated.addListener(loadMediaList)
+    }
   })
 
   onUnmounted(() => {
     browser.runtime.onMessage.removeListener(onMessage)
+    if (props.mode === 'sidepanel') {
+      browser.tabs.onActivated.removeListener(loadMediaList)
+    }
     hlsInstances.value.forEach(hls => hls.destroy())
     hlsInstances.value.clear()
     dashInstances.value.forEach(dash => dash.destroy())
@@ -601,7 +632,7 @@
         item.height = img.naturalHeight
       }
     }
-    imageLoadStatus.set(url, true)
+    imageLoadStatus.value.set(url, true)
   }
 
   const sanitizeFilename = (name: string): string => {
@@ -657,7 +688,7 @@
         browser.downloads.download({ url: item.url, filename })
       }
     })
-    showToastMsg(`已开始下载 ${items.length} 个文件`)
+    showToastMsg(browser.i18n.getMessage('batchDownloadStarted', items.length.toString()))
     selectedItems.value.clear()
   }
 
@@ -694,10 +725,14 @@
   }
 
   async function openShortcuts() {
-    if (typeof browser.commands?.openShortcutSettings === 'function') {
-      browser.commands.openShortcutSettings()
+    if (typeof (browser.commands as any)?.openShortcutSettings === 'function') {
+      ;(browser.commands as any).openShortcutSettings()
     } else {
-      browser.tabs.create({ url: 'chrome://extensions/shortcuts' })
+      const isFirefox = navigator.userAgent.includes('Firefox')
+      const url = isFirefox
+        ? 'about:addons'
+        : 'chrome://extensions/shortcuts'
+      browser.tabs.create({ url })
     }
   }
 
@@ -738,7 +773,7 @@
 </script>
 
 <template>
-  <div class="w-[500px] min-w-[500px] h-[600px] max-h-[600px] bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col relative overflow-hidden">
+  <div :class="rootContainerClass">
 
     <!-- ═══ LIST VIEW ═══════════════════════════════════════════════ -->
     <Transition
@@ -751,41 +786,41 @@
     >
       <div v-if="view === 'list'" class="flex flex-col h-full">
         <div class="border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-900 z-10 shrink-0">
-          <div class="flex items-center px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+          <div v-if="mode === 'popup'" class="flex items-center px-3 py-2 border-b border-gray-100 dark:border-gray-800">
             <img src="/icon/48.png" alt="FlowPick" class="w-6 h-6 mr-2" />
             <div class="flex items-center gap-1.5">
               <span class="text-sm font-bold text-gray-800 dark:text-gray-100">FlowPick</span>
-              <span class="text-[10px] text-gray-400 dark:text-gray-500"> | 智能嗅探，一键下载</span>
+              <span class="text-[10px] text-gray-400 dark:text-gray-500"> | {{ browser.i18n.getMessage('subtitle') }}</span>
             </div>
           </div>
           <div class="flex items-center">
             <nav class="flex -mb-px flex-1">
               <button @click="activeTab = 'all'" :class="[activeTab === 'all' ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
-                ALL({{ tabCounts.all }})
+                {{ browser.i18n.getMessage('tabAll') }}({{ tabCounts.all }})
               </button>
               <button @click="activeTab = 'stream'" :class="[activeTab === 'stream' ? 'border-purple-500 text-purple-600 dark:text-purple-400 dark:border-purple-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
-                Stream({{ tabCounts.stream }})
+                {{ browser.i18n.getMessage('tabStream') }}({{ tabCounts.stream }})
               </button>
               <button @click="activeTab = 'video'" :class="[activeTab === 'video' ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
-                Video({{ tabCounts.video }})
+                {{ browser.i18n.getMessage('video') }}({{ tabCounts.video }})
               </button>
               <button @click="activeTab = 'audio'" :class="[activeTab === 'audio' ? 'border-green-500 text-green-600 dark:text-green-400 dark:border-green-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
-                Audio({{ tabCounts.audio }})
+                {{ browser.i18n.getMessage('audio') }}({{ tabCounts.audio }})
               </button>
               <button @click="activeTab = 'image'" :class="[activeTab === 'image' ? 'border-orange-500 text-orange-600 dark:text-orange-400 dark:border-orange-400 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 font-normal', 'flex-1 py-2.5 px-1 text-center border-b-2 text-sm transition-all']">
-                Image({{ tabCounts.image }})
+                {{ browser.i18n.getMessage('image') }}({{ tabCounts.image }})
               </button>
             </nav>
           </div>
           <div v-if="filteredMediaList.length > 0" class="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
             <div class="flex items-center gap-2">
-              <button @click="toggleSelectAll" class="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all" :title="selectedItems.size === filteredMediaList.length ? '取消全选' : '全选'">
+              <button @click="toggleSelectAll" class="flex items-center justify-center w-7 h-7 rounded-md text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all" :title="selectedItems.size === filteredMediaList.length ? browser.i18n.getMessage('deselectAll') : browser.i18n.getMessage('selectAll')">
                 <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
                   <circle cx="12" cy="12" r="9" />
                   <path v-if="selectedItems.size === filteredMediaList.length" stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" />
                 </svg>
               </button>
-              <button @click="batchDownload" :disabled="selectedItems.size === 0" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-400 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white rounded-lg transition-all disabled:cursor-not-allowed shadow-sm" title="下载所选" >
+              <button @click="batchDownload" :disabled="selectedItems.size === 0" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-400 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white rounded-lg transition-all disabled:cursor-not-allowed shadow-sm" :title="browser.i18n.getMessage('downloadSelected')" >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
@@ -799,7 +834,7 @@
                   ? 'text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30' 
                   : 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               ]"
-              title="过滤">
+              :title="browser.i18n.getMessage('filter')">
               <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
               </svg>
@@ -816,42 +851,42 @@
             <div v-if="showFilter" class="px-2 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
               <div class="flex flex-wrap gap-3 text-xs">
                 <div class="flex items-center gap-1.5">
-                  <span class="text-gray-500 dark:text-gray-400">类型:</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ browser.i18n.getMessage('filterType') }}:</span>
                   <select v-model="typeFilter"
                     class="px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
-                    <option value="any">Any</option>
+                    <option value="any">{{ browser.i18n.getMessage('any') }}</option>
                     <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
                       {{ opt.label }}({{ opt.count }})
                     </option>
                   </select>
                 </div>
                 <div class="flex items-center gap-1.5">
-                  <span class="text-gray-500 dark:text-gray-400">大小:</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ browser.i18n.getMessage('filterSize') }}:</span>
                   <input type="number" v-model.number="sizeFilter.min" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
-                    placeholder="最小" />
+                    :placeholder="browser.i18n.getMessage('min')" />
                   <span class="text-gray-400">-</span>
                   <input type="number" v-model.number="sizeFilter.max" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
-                    placeholder="最大" />
-                  <span class="text-gray-400">KB</span>
+                    :placeholder="browser.i18n.getMessage('max')" />
+                  <span class="text-gray-400">{{ browser.i18n.getMessage('kb') }}</span>
                 </div>
                 <div v-if="activeTab === 'image'" class="flex items-center gap-1.5">
-                  <span class="text-gray-500 dark:text-gray-400">尺寸:</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ browser.i18n.getMessage('filterDimension') }}:</span>
                   <input type="number" v-model.number="dimensionFilter.minWidth" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
-                    placeholder="宽" />
+                    :placeholder="browser.i18n.getMessage('width')" />
                   <span class="text-gray-400">×</span>
                   <input type="number" v-model.number="dimensionFilter.minHeight" min="0" 
                     class="w-14 px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500" 
-                    placeholder="高" />
+                    :placeholder="browser.i18n.getMessage('height')" />
                   <span class="text-gray-400">px</span>
                 </div>
                 <div v-if="activeTab === 'video'" class="flex items-center gap-1.5">
-                  <span class="text-gray-500 dark:text-gray-400">分辨率:</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ browser.i18n.getMessage('filterResolution') }}:</span>
                   <select v-model="resolutionFilter"
                     class="px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
-                    <option value="any">Any</option>
+                    <option value="any">{{ browser.i18n.getMessage('any') }}</option>
                     <option value="8k">8K</option>
                     <option value="4k">4K</option>
                     <option value="1080p">1080P</option>
@@ -863,7 +898,7 @@
                 </div>
                 <button @click="typeFilter = 'any'; sizeFilter = { min: 0, max: 0 }; dimensionFilter = { minWidth: 0, minHeight: 0 }; resolutionFilter = 'any'" 
                   class="px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-900 dark:hover:text-white rounded transition-all duration-150">
-                  重置
+                  {{ browser.i18n.getMessage('reset') }}
                 </button>
               </div>
             </div>
@@ -876,7 +911,7 @@
             <div class="w-20 h-20 mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
               <svg class="w-10 h-10 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
               </svg>
             </div>
             <p class="text-base font-medium text-gray-600 dark:text-gray-400 mb-2">{{ browser.i18n.getMessage('notFound') }}</p>
@@ -894,7 +929,7 @@
                 <img :src="item.url" :alt="getFileName(item.url)" 
                   class="w-full h-auto object-cover"
                   loading="lazy"
-                  @error="imageLoadStatus.set(item.url, false)"
+                  @error="(imageLoadStatus as any).set(item.url, false)"
                   @load="onImageLoad($event, item.url)" />
                 <div v-if="selectedItems.has(index)" class="absolute top-2 left-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
                   <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -923,7 +958,7 @@
                       </button>
                       <button @click="previewImage(item.url)"
                         class="p-1 rounded bg-white/20 hover:bg-white/30 text-white transition-colors"
-                        title="预览">
+                        :title="browser.i18n.getMessage('preview')">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
                         </svg>
@@ -1142,7 +1177,7 @@
       leave-from-class="opacity-100 translate-x-0"
       leave-to-class="opacity-0 translate-x-4"
     >
-      <div v-if="view === 'settings'" class="flex flex-col h-full absolute inset-0 bg-white dark:bg-gray-900">
+      <div v-if="view === 'settings'" class="flex flex-col h-full absolute inset-0 z-20 bg-white dark:bg-gray-900">
 
         <!-- Header -->
         <div class="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-900 shadow-sm">
@@ -1219,7 +1254,7 @@
                     :disabled="!settings.sniffingRules[row.key].enabled"
                     class="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 disabled:opacity-35 disabled:cursor-not-allowed"
                   />
-                  <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">KB</span>
+                  <span class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ browser.i18n.getMessage('kb') }}</span>
                 </div>
               </div>
             </div>
@@ -1237,7 +1272,7 @@
                 @input="triggerTextSave"
                 @blur="triggerSave"
                 rows="3"
-                placeholder="twitter.com&#10;facebook.com"
+                :placeholder="browser.i18n.getMessage('excludeDomainsPlaceholder')"
                 class="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-150 resize-none font-mono shadow-sm"
               />
               <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ browser.i18n.getMessage('excludeDomainsDesc') }}</p>
@@ -1254,7 +1289,7 @@
               <p class="text-sm text-gray-600 dark:text-gray-400">{{ browser.i18n.getMessage('keyboardShortcutsDesc') }}</p>
               <button type="button" @click="openShortcuts"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 active:scale-95 transition-all duration-150">
-                Open
+                {{ browser.i18n.getMessage('open') }}
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>

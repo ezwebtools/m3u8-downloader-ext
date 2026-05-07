@@ -54,10 +54,10 @@
         "message": "播放"
     },
     "notFound":{
-        "message": "未偵測到任何影片串流"
+        "message": "未偵測到任何媒體資源"
     },
     "playTips":{
-        "message": "某些影片必須播放才能被偵測到。"
+        "message": "播放影片或音訊，或載入圖片即可偵測媒體資源。"
     },
     "unplayable":{
         "message": "您的瀏覽器不支援影片播放。"
@@ -244,5 +244,65 @@
     },
     "needMoreHelpDesc":{
         "message": "如果以上內容未能解決你的問題，歡迎透過以下方式取得支援"
+    },
+    "subtitle":{
+        "message": "智慧嗅探，一鍵下載"
+    },
+    "tabAll":{
+        "message": "全部"
+    },
+    "tabStream":{
+        "message": "串流媒體"
+    },
+    "selectAll":{
+        "message": "全選"
+    },
+    "deselectAll":{
+        "message": "取消全選"
+    },
+    "downloadSelected":{
+        "message": "下載所選"
+    },
+    "filter":{
+        "message": "篩選"
+    },
+    "filterType":{
+        "message": "類型"
+    },
+    "any":{
+        "message": "任意"
+    },
+    "filterSize":{
+        "message": "大小"
+    },
+    "min":{
+        "message": "最小"
+    },
+    "max":{
+        "message": "最大"
+    },
+    "filterDimension":{
+        "message": "尺寸"
+    },
+    "width":{
+        "message": "寬"
+    },
+    "height":{
+        "message": "高"
+    },
+    "filterResolution":{
+        "message": "解析度"
+    },
+    "reset":{
+        "message": "重置"
+    },
+    "preview":{
+        "message": "預覽"
+    },
+    "batchDownloadStarted":{
+        "message": "已開始下載 $1 個檔案"
+    },
+    "open":{
+        "message": "開啟"
     }
 }

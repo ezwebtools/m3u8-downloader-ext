@@ -1,6 +1,6 @@
 <script lang="ts" setup>
   const version = browser.runtime.getManifest().version
-  const t = (key: string) => browser.i18n.getMessage(key)
+  const t = (key: string) => browser.i18n.getMessage(key as any)
 
   interface FaqItem {
     questionKey: string

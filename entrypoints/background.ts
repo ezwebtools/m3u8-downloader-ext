@@ -13,7 +13,7 @@ async function fetchMediaInfo(url: string): Promise<{ width?: number; height?: n
   try {
     const mediaInfo = await MediaInfoFactory({
       format: 'JSON',
-      locateFile: () => browser.runtime.getURL('MediaInfoModule.wasm')
+      locateFile: () => browser.runtime.getURL('MediaInfoModule.wasm' as any)
     })
     
     const getSize = async () => {
@@ -71,6 +71,32 @@ async function fetchVideoDimensions(url: string): Promise<{ width: number; heigh
 }
 
 export default defineBackground(() => {
+  const chromeGlobal = (globalThis as any).chrome
+  const supportsSidepanel = !!chromeGlobal?.sidePanel
+
+  if (supportsSidepanel) {
+    const canOpenSidepanel = typeof chromeGlobal.sidePanel.open === 'function'
+
+    if (canOpenSidepanel) {
+      chromeGlobal.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true })
+      chromeGlobal.action.setPopup({ popup: '' })
+
+      browser.action.onClicked.addListener(async (tab) => {
+        if (tab.id !== undefined) {
+          try {
+            await chromeGlobal.sidePanel.open({ tabId: tab.id })
+          } catch (e) {
+            console.warn('Failed to open sidepanel:', e)
+          }
+        }
+      })
+    } else {
+      chromeGlobal.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true })
+      chromeGlobal.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+      chromeGlobal.action.setPopup({ popup: '' })
+    }
+  }
+
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
       const welcomeUrl = browser.runtime.getURL('/welcome.html' as any)
@@ -78,7 +104,9 @@ export default defineBackground(() => {
     }
   })
 
-  browser.runtime.setUninstallURL('https://github.com/1337-ops/m3u8-downloader-ext')
+  browser.runtime.onStartup.addListener(() => {})
+
+  // browser.runtime.setUninstallURL('https://github.com/1337-ops/m3u8-downloader-ext')
 
   const tabMap = new Map<number, Map<string, MediaEntry>>()
   const tabPageUrls = new Map<number, string>()
